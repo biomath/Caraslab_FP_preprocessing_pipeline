@@ -3,7 +3,7 @@ from re import split
 from os.path import sep
 from os import makedirs
 import platform
-from helpers.preprocess_files import preprocess_files
+from notebook_dist.helpers.preprocess_files import preprocess_files
 
 # Tweak the regex file separator for cross-platform compatibility
 if platform.system() == 'Windows':

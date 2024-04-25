@@ -1,8 +1,8 @@
 from platform import system
 from os.path import sep
 
-from helpers.extract_FP_trial_zscores import run_zscore_extraction
-from helpers.recalculate_ePsych_responseLatency import recalculate_ePsych_responseLatency
+from notebook_dist.helpers.extract_FP_trial_zscores import run_zscore_extraction
+from notebook_dist.helpers.recalculate_ePsych_responseLatency import recalculate_ePsych_responseLatency
 
 # Tweak the regex file separator for cross-platform compatibility
 if system() == 'Windows':
