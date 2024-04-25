@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 from matplotlib import patches, colormaps
 import json
 import platform
-from notebook_dist.helpers.format_axes import format_ax
-from notebook_dist.helpers.preprocess_files import preprocess_files
+from helpers.format_axes import format_ax
+from helpers.preprocess_files import preprocess_files
 
 # Tweak the regex file separator for cross-platform compatibility
 if platform.system() == 'Windows':
