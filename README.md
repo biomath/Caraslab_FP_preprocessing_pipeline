@@ -21,7 +21,7 @@ conda activate caraslab_fp
 ```
 conda install --yes --file requirements.txt
 ```
-Pipeline is installed after this. If you want to run right after installation, proceed to step 2 below
+Pipeline is installed after this. If you want to run right after installation, proceed to step 4 below
 
 ## Run instructions
 1. Open terminal window
