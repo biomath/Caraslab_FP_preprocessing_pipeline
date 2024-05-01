@@ -1,7 +1,7 @@
 # Fiber photometry analysis pipeline
 
 ## Install instructions
-1. Download and install [ana/miniconda](https://docs.anaconda.com/free/miniconda/index.html). Make sure to add conda to PATH during installation
+1. Download and install [ana-](https://docs.anaconda.com/free/anaconda/install/windows/) / [miniconda](https://docs.anaconda.com/free/miniconda/index.html). Make sure to add conda to PATH during installation
 2. Clone this github repository in your computer
 3. Open terminal window
 4. Change terminal directory to location where files were downloaded
