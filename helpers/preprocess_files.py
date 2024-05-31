@@ -29,8 +29,8 @@ def preprocess_files(memory_path, settings_dict):
         cur_date = split("-*-", split_timestamps_name)[3]
         cur_timestamp = split("-*-", split_timestamps_name)[4]
     else:
-        print('Experiment type  not found in file name')
-        return
+        print('Experiment type  not found in file name', flush=True)
+        return None, None, None, None
 
     subject_id = split("_*_", recording_id)[0]
     subj_date = subject_id + '_' + cur_date
@@ -40,8 +40,8 @@ def preprocess_files(memory_path, settings_dict):
                          cur_date + '*' + cur_timestamp + "*_trialInfo.csv")
 
     if len(key_path_info) == 0:
-        print("Key not found for " + recording_id)
-        return
+        print("Key not found for " + recording_id, flush=True)
+        return None, None, None, None
 
     # Load key and spout files
     info_key_times = read_csv(key_path_info[0])
@@ -58,7 +58,7 @@ def preprocess_files(memory_path, settings_dict):
         spout_key_times = None
         trial_types = ['Hit', 'Miss', 'Reject', 'False alarm']
     else:
-        print('Experiment type not found in key file name')
+        print('Experiment type not found in key file name', flush=True)
         return
 
     return subj_date, info_key_times, spout_key_times, trial_types
