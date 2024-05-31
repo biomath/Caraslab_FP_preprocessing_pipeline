@@ -1,4 +1,4 @@
-# Fiber photometry analysis pipeline
+# Fiber photometry preprocessing pipeline
 
 ## Install instructions
 1. Download and install [ana/miniconda](https://docs.anaconda.com/free/miniconda/index.html)
