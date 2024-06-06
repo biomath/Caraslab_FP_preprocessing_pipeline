@@ -26,8 +26,12 @@ def preprocess_files(memory_path, settings_dict):
         cur_date = split("-*-", split_timestamps_name)[2]
         cur_timestamp = split("-*-", split_timestamps_name)[3]
     elif 'Aversive' in split_timestamps_name or 'Passive' in split_timestamps_name:
-        cur_date = split("-*-", split_timestamps_name)[3]
-        cur_timestamp = split("-*-", split_timestamps_name)[4]
+        try:
+            cur_date = split("-*-", split_timestamps_name)[3]
+            cur_timestamp = split("-*-", split_timestamps_name)[4]
+        except IndexError:  # The Synapse protocol name got changed at some point for some reason
+            cur_date = split("-*-", split_timestamps_name)[2]
+            cur_timestamp = split("-*-", split_timestamps_name)[3]
     else:
         print('Experiment type  not found in file name', flush=True)
         return None, None, None, None

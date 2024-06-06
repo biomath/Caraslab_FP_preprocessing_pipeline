@@ -8,7 +8,7 @@ from re import split
 
 import numpy as np
 from matplotlib import pyplot as plt, patches, rcParams
-from matplotlib.cm import get_cmap
+from matplotlib import colormaps
 
 import pandas as pd
 from scipy.signal import resample
@@ -158,7 +158,7 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
             sorted_plot_list = cur_resps[np.array(cur_sessions_ordered)]
             n_sessions = np.size(sorted_plot_list, axis=0)
 
-            current_cmap = get_cmap(name='plasma')
+            current_cmap = colormaps['plasma']
             current_cmap.set_bad('white')
             cax = ax.imshow(sorted_plot_list, vmin=-1, vmax=10, interpolation='None', cmap=current_cmap,
                             extent=[0, np.size(sorted_plot_list, axis=1), n_sessions, 0],
@@ -169,7 +169,7 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
             # Add subject colors
             # These patches start at the bottom left corner so we need to use the reversed lists
             if subject_colors is None:
-                subject_colors = get_cmap(name='tab20').colors
+                subject_colors = colormaps['tab20'].colors
 
             for group_idx, cur_group in reversed(list(enumerate(unique_groups))):
                 y_start = (colorbar_splits[group_idx + 1]) / n_sessions

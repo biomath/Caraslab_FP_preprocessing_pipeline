@@ -317,8 +317,10 @@ def run_zscore_extraction(input_list):
     if SETTINGS_DICT['PIPELINE_SWITCHBOARD']['plot_trial_zscores']:
         if align_to_response:
             file_name = subj_date + '_responseAligned_trialSummary'
+            x_label = "Time from response (s)"
         else:
             file_name = subj_date + '_trialAligned_trialSummary'
+            x_label = "Time from trial onset (s)"
         print('Plotting summary trial z-scores... ', end='' , flush=True)
         t0 = tic()
         sig_mean_dict = dict()
@@ -393,7 +395,7 @@ def run_zscore_extraction(input_list):
 
             format_ax(ax)
 
-            ax.set_xlabel("Time from trial onset (s)")
+            ax.set_xlabel(x_label)
             ax.set_ylabel(r'($\Delta$F/F z-score)')
 
             # Might want to make this a variable
@@ -430,8 +432,10 @@ def run_zscore_extraction(input_list):
         t0 = tic()
         if align_to_response:
             file_name = subj_date + '_responseAligned_byAMdepth'
+            x_label = "Time from response (s)"
         else:
             file_name = subj_date + '_trialAligned_byAMdepth'
+            x_label = "Time from trial onset (s)"
 
         t0 = tic()
         sig_mean_dict = dict()
@@ -514,7 +518,7 @@ def run_zscore_extraction(input_list):
 
                 format_ax(ax)
 
-                ax.set_xlabel("Time from trial onset (s)")
+                ax.set_xlabel(x_label)
                 ax.set_ylabel(r'$\Delta$F/F z-score')
 
                 # Might want to make this a variable
