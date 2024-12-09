@@ -29,8 +29,6 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
     subject_colors = SETTINGS_DICT['SUBJECT_COLORS']
 
     sessions_to_run = SETTINGS_DICT['SESSIONS_TO_RUN']
-    if sep in sessions_to_run:
-        sessions_to_run = pd.read_csv(sessions_to_run)['Session'].values
 
     sessions_to_exclude = SETTINGS_DICT['SESSIONS_TO_EXCLUDE']
     trial_zscore_plots_path = output_path + sep + 'Aligned signals'
@@ -44,6 +42,9 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
     signals_path = glob(input_path + sep + '*trialSummary_curves.csv')
 
     if sessions_to_run is not None:
+        if sep in sessions_to_run:  # A file with session names was specified
+            sessions_to_run = pd.read_csv(sessions_to_run)['Session'].values
+
         signals_path = [path for path in signals_path if
                         any([chosen for chosen in sessions_to_run if chosen in path])]
 
@@ -80,7 +81,9 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
     # Now uniformize lengths (tolerated jitter of 1 point) and resample using bin_size
     print('Uniformizing signal lengths for plotting...')
     min_length = np.round(np.min([len(x) for x in sig_list if not np.alltrue(np.isnan(x))]), 0)
-    plot_list = np.array([resample(x[0:int(min_length)], int(min_length*sampling_interval/bin_size)) for x in sig_list], dtype=float)
+    # plot_list = np.array([resample(x[0:int(min_length)], int(min_length*sampling_interval/bin_size)) for x in sig_list], dtype=float)
+    plot_list = np.array(
+        [x[0:int(min_length)] for x in sig_list], dtype=float)
 
     print('Done!')
 
@@ -90,7 +93,11 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
     # Add missing sessions as NaN
     print('Adding missing sessions as NaN...')
     for group_idx, cur_group in enumerate(unique_groups):
-        cur_sessions = [s for s in sessions_to_run if cur_group in s]
+        if sessions_to_run is not None:
+            cur_sessions = [s for s in sessions_to_run if cur_group in s]
+        else:
+            cur_sessions = sorted(list(set([s for s in day_list if cur_group in s])))
+
         for subj_session in cur_sessions:
             cur_day_filter = np.in1d(day_list, subj_session)
             cur_day_trials = np.unique(np.array(trialType_list)[cur_day_filter])
@@ -112,7 +119,10 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
         if cur_group == 'all':
             cur_sessions = day_list
         else:
-            cur_sessions = [s for s in sessions_to_run if cur_group in s]
+            if sessions_to_run is not None:
+                cur_sessions = [s for s in sessions_to_run if cur_group in s]
+            else:
+                cur_sessions = sorted(list(set([s for s in day_list if cur_group in s])))
 
         # cur_units = UNITS_TO_RUN['Unit'].values
         cur_day_filter = np.in1d(day_list, cur_sessions)

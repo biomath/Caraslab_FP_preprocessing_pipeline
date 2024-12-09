@@ -37,11 +37,13 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 def __get_trialID_zscore(processed_signal, key_times_df,
+                         paradigm_type,
                          baseline_start_for_zscore=0., baseline_end_for_zscore=1.,
                          response_window_duration=4.,
                          response_latency_filter=False,
                          align_to_response=False,
-                         subtract_405=True):
+                         subtract_405=True,
+                         ms_latency_values=True):
     ret_list = list()
     # There are inconsistencies between the Aversive and Appetitive paradigm in the column naming.
     # Make all lower case here
@@ -59,9 +61,10 @@ def __get_trialID_zscore(processed_signal, key_times_df,
 
         # Use response time to get at the reward delivery
         if align_to_response:
-            response_time = cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] / 1000
-            if np.isnan(response_time):
-                continue
+            if ms_latency_values:
+                response_time = cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] / 1000
+            else:
+                response_time = cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0]
         else:
             response_time = 0
 
@@ -78,16 +81,16 @@ def __get_trialID_zscore(processed_signal, key_times_df,
         # z-score it
 
         # Use baseline just before response
-        # baseline_signal = processed_signal[
-        #     (processed_signal['Time'] > (cur_trial['trial_onset'] - baseline_start_for_zscore + response_time)) &
-        #     (processed_signal['Time'] <= (cur_trial['trial_onset'] - baseline_end_for_zscore + response_time))][
-        #     sig_column]
+        baseline_signal = processed_signal[
+            (processed_signal['Time'] > (cur_trial['trial_onset'] - baseline_start_for_zscore + response_time)) &
+            (processed_signal['Time'] <= (cur_trial['trial_onset'] - baseline_end_for_zscore + response_time))][
+            sig_column]
 
         # Use baseline before sound onset (even when aligned by response time)
-        baseline_signal = processed_signal[
-            (processed_signal['Time'] > (cur_trial['trial_onset'] - baseline_start_for_zscore)) &
-            (processed_signal['Time'] <= (cur_trial['trial_onset'] - baseline_end_for_zscore))][
-            sig_column]
+        # baseline_signal = processed_signal[
+        #     (processed_signal['Time'] > (cur_trial['trial_onset'] - baseline_start_for_zscore)) &
+        #     (processed_signal['Time'] <= (cur_trial['trial_onset'] - baseline_end_for_zscore))][
+        #     sig_column]
 
         # # Truncate signal at response
         # if truncate_at_responseTime:
@@ -169,6 +172,8 @@ def run_zscore_extraction(input_list):
 
     downsample_fs = SETTINGS_DICT['DOWNSAMPLE_RATE']
 
+    ms_latency_values = SETTINGS_DICT['MS_LATENCY_VALUES']
+
     # Plot colors and some parameters
     passive_color = 'black'
     hit_color = '#60B2E5'
@@ -197,12 +202,26 @@ def run_zscore_extraction(input_list):
     subj_date = ''
     print('Loading and z-scoring signals... ', end='', flush=True)
     t0 = tic()
+
+    if len(session_date_paths) == 0:
+        raise UserWarning('No key files were found. Please check your paths.')
+
     for recording_path in session_date_paths:
         subj_date, info_key_times, _, trial_types = preprocess_files(recording_path, SETTINGS_DICT)
         if info_key_times is None:  # If preprocessing can't find files, skip
             continue
         # Reset this here, because passive files will change this to 0
         response_latency_filter = SETTINGS_DICT['RESPONSE_LATENCY_FILTER']
+
+        # Determine experiment type
+        if '1IFC' in recording_path or '1IFC' in SETTINGS_DICT['EXPERIMENT_TYPE']:
+            paradigm_type = '1IFC'
+        elif ('Aversive' in recording_path or 'Passive' in recording_path
+                or 'AversiveAM' in SETTINGS_DICT['EXPERIMENT_TYPE']):
+            paradigm_type = 'AversiveAM'
+        else:
+            print('Behavioral experiment type not recognized... ', end='', flush=True)
+            continue
 
         # Load signal
         processed_signal = pd.read_csv(recording_path)
@@ -214,7 +233,7 @@ def run_zscore_extraction(input_list):
             fs = SETTINGS_DICT['SAMPLING_RATE']
 
         for trial_type in trial_types:
-            if '1IFC' in recording_path or '1IFC' in SETTINGS_DICT['EXPERIMENT_TYPE']:
+            if paradigm_type == '1IFC':
                 if trial_type == 'Hit':
                     cur_key_times = info_key_times[(info_key_times['Hit'] == 1)]
                 elif trial_type == 'Miss':
@@ -226,9 +245,13 @@ def run_zscore_extraction(input_list):
                 else:  # Passive
                     cur_key_times = info_key_times[(info_key_times['TrialType'] == 0)]
                     # Keep track of trial number and onset time too
-            elif ('Aversive' in recording_path or 'Passive' in recording_path
-                    or 'AversiveAM' in SETTINGS_DICT['EXPERIMENT_TYPE']):
-                if trial_type == 'Hit (shock)':
+            elif paradigm_type == 'AversiveAM':
+                if trial_type == 'Hit (all)':
+                    cur_key_times = info_key_times[
+                        (info_key_times['TrialType'] == 0) & (info_key_times['Hit'] == 1) & (
+                                info_key_times['Reminder'] == 0)]
+
+                elif trial_type == 'Hit (shock)':
                     cur_key_times = info_key_times[
                         (info_key_times['TrialType'] == 0) & (info_key_times['Hit'] == 1) & (
                                 info_key_times['Reminder'] == 0) &
@@ -262,13 +285,16 @@ def run_zscore_extraction(input_list):
             else:
                 print('Experiment type not recognized. Exiting.', flush=True)
                 return
+
             cur_signals = __get_trialID_zscore(processed_signal, cur_key_times,
-                                               baseline_start_for_zscore=baseline_start_for_zscore,
-                                               baseline_end_for_zscore=baseline_end_for_zscore,
-                                               response_window_duration=response_window_duration,
-                                               response_latency_filter=response_latency_filter,
-                                               align_to_response=align_to_response,
-                                               subtract_405=subtract_405)
+                                           baseline_start_for_zscore=baseline_start_for_zscore,
+                                           baseline_end_for_zscore=baseline_end_for_zscore,
+                                           response_window_duration=response_window_duration,
+                                           response_latency_filter=response_latency_filter,
+                                           align_to_response=align_to_response,
+                                           subtract_405=subtract_405,
+                                           paradigm_type=paradigm_type,
+                                           ms_latency_values=ms_latency_values)
 
             if downsample_fs is not None:
                 downsample_q = fs // downsample_fs
@@ -336,7 +362,7 @@ def run_zscore_extraction(input_list):
                 ax.axvspan(target_sound_onset, target_sound_offset, ymin=0.05, ymax=0.075,
                            facecolor='black', alpha=0.25)
 
-                if '1IFC' in recording_path or '1IFC' in SETTINGS_DICT['EXPERIMENT_TYPE']:
+                if paradigm_type == '1IFC':
                     ax.axvspan(response_latency_filter, response_window_duration,
                                ymin=0.025, ymax=0.05, facecolor='g', alpha=0.25)
 
@@ -344,6 +370,8 @@ def run_zscore_extraction(input_list):
             for trial_type in trial_type_dict.keys():
                 # Map to color
                 if trial_type == 'Hit':
+                    cur_color = hit_color
+                if trial_type == 'Hit (all)':
                     cur_color = hit_color
                 elif trial_type == 'Hit (shock)':
                     cur_color = hitShock_color
@@ -450,14 +478,13 @@ def run_zscore_extraction(input_list):
         with PdfPages(sep.join([trial_zscore_plots_path, file_name + '.pdf'])) as pdf:
             # Trial grouping for plotting, if you'd like to combine responses
             # Example: trial_groups = [('Hit', 'Reject'), ('Miss', 'False alarm')]
-            if ('Aversive' in recording_path or 'Passive' in recording_path
-                    or 'AversiveAM' in SETTINGS_DICT['EXPERIMENT_TYPE']):
+            if paradigm_type == 'AversiveAM':
                 # trial_groups = trial_type_dict.keys()
-                trial_groups = [('Hit (shock)', 'Hit (no shock)'), ('Miss (shock)', 'Miss (no shock)'), 'False alarm']
-            elif '1IFC' in SETTINGS_DICT['EXPERIMENT_TYPE']:
+                trial_groups = ['Hit (all)', ('Hit (shock)', 'Hit (no shock)'), ('Miss (shock)', 'Miss (no shock)'), 'False alarm']
+            elif paradigm_type == '1IFC':
                 trial_groups = ['Hit', 'Reject', 'Miss', 'False alarm']
             else:
-                print('Experiment type not found. Skipping plotting', flush=True)
+                print('Experiment type not recognized. Skipping plotting', flush=True)
                 return
 
             for tgroup in trial_groups:
@@ -471,7 +498,7 @@ def run_zscore_extraction(input_list):
                     ax.axvspan(target_sound_onset, target_sound_offset, ymin=0.05, ymax=0.075,
                                facecolor='black', alpha=0.25)
 
-                    if '1IFC' in recording_path or '1IFC' in SETTINGS_DICT['EXPERIMENT_TYPE']:
+                    if paradigm_type == '1IFC':
                         ax.axvspan(response_latency_filter, response_window_duration,
                                    ymin=0.025, ymax=0.05, facecolor='g', alpha=0.25)
 
@@ -480,6 +507,12 @@ def run_zscore_extraction(input_list):
                 legend_handles = list()
                 for trial_type in cur_trialTypes:
                     am_sig_list = dict()
+
+                    if trial_type == 'Miss (no shock)' or trial_type == 'Hit (no shock)':
+                        linestyle = '--'
+                    else:
+                        linestyle = '-'
+
                     for amdepth in sorted(list(set(all_ams)), reverse=True):
                         if amdepth > -40:
                             perc_value = np.round(10 ** (amdepth / 20), 2)
@@ -621,3 +654,4 @@ def run_zscore_extraction(input_list):
                                     [output_dict[trial_type][2][trial_idx]] +  # Peak
                                     [output_dict[trial_type][3][trial_idx]])  # Baseline AUC for dprime calculations
         toc(t0)
+
