@@ -49,16 +49,17 @@ def preprocess_files(memory_path, settings_dict):
 
     # Load key and spout files
     info_key_times = read_csv(key_path_info[0])
+    key_file_name = split(REGEX_SEP, key_path_info[0])[-1]
 
-    if 'Aversive' in key_path_info[0]:
+    if 'Aversive' in key_file_name:
         key_path_spout = glob(keys_path + sep + subject_id + '*' +
                               cur_date + '*' + cur_timestamp + "*spoutTimestamps.csv")
         spout_key_times = read_csv(key_path_spout[0])
         trial_types = ['Hit (all)', 'Hit (shock)', 'Hit (no shock)', 'Miss (shock)', 'Miss (no shock)', 'False alarm']
-    elif 'Passive' in key_path_info[0]:
+    elif 'Passive' in key_file_name:
         spout_key_times = None
         trial_types = ['Passive', ]
-    elif '1IFC' in key_path_info[0]:
+    elif '1IFC' in key_file_name:
         spout_key_times = None
         trial_types = ['Hit', 'Miss', 'Reject', 'False alarm']
     else:
