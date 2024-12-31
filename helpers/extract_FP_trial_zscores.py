@@ -55,18 +55,18 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
         if cur_trial[cur_trial.keys().str.contains('reminder')].iloc[0] == 1:
             continue
 
-        # Only include trials with higher than a specified response time
-        # 0.4 is the start of the AM
-        # Assume animals did not wait for signal otherwise
-        if cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] / 1000 < response_latency_filter:
-            continue
-
         # Use response time to get at the reward delivery
+        if ms_latency_values:
+            cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] /= 1000
+
+        # Only include trials with higher than a specified response time
+        # If response_latency_filter == 0, the first if-statement is redundant, but implement it just in case
+        if response_latency_filter > 0:
+            if cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] < response_latency_filter:
+                continue
+
         if align_to_response:
-            if ms_latency_values:
-                response_time = cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] / 1000
-            else:
-                response_time = cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0]
+            response_time = cur_trial[cur_trial.keys().str.contains('response')].iloc[0]
         else:
             response_time = 0
 
