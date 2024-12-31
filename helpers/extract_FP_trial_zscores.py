@@ -55,17 +55,16 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
         if cur_trial[cur_trial.keys().str.contains('reminder')].iloc[0] == 1:
             continue
 
-        # Some RPvds circuits output latencies in msec... oops! 
+        # Use response time to get at the reward delivery
         if ms_latency_values:
-            cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] /= 1000
+            cur_trial.loc[cur_trial.keys().str.contains('resplatency')] /= 1000
 
         # Only include trials with higher than a specified response time
         # If response_latency_filter == 0, the first if-statement is redundant, but implement it just in case
         if response_latency_filter > 0:
             if cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] < response_latency_filter:
                 continue
-                
-        # Use response time to get at the reward delivery
+
         if align_to_response:
             response_time = cur_trial[cur_trial.keys().str.contains('response')].iloc[0]
         else:
@@ -114,9 +113,11 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
             cur_amdepth = np.round(20 * np.log10(cur_amdepth), 1)
         else:
             cur_amdepth = -40
-        ret_list.append([[cur_trial['trialid'], cur_amdepth,
+        ret_list.append([[cur_trial['trialid'],
+                          cur_amdepth,
                           cur_trial['trial_onset'],
-                          cur_trial['trial_offset']],
+                          cur_trial['trial_offset'],
+                          cur_trial['resplatency']],
                          dff_signal, baseline_signal])
     return ret_list
 
@@ -703,7 +704,7 @@ def run_zscore_extraction(input_list):
             writer = csv.writer(file, delimiter=',')
 
             writer.writerow(['Recording'] + ['Trial_type'] + ['TrialID'] +
-                            ['AMDepth'] + ['Trial_Onset'] + ['Trial_Offset'] +
+                            ['AMDepth'] + ['Trial_Onset'] + ['Trial_Offset'] + ['RespLatency'] +
                             ['Area_under_curve_dff'] + ['Peak_value_dff'] + ['Baseline_area_under_curve_dff'] +
                             ['Area_under_curve_zscore'] + ['Peak_value_zscore'] + ['Baseline_area_under_curve_zscore'])
 
@@ -715,9 +716,11 @@ def run_zscore_extraction(input_list):
                     AMdepth = output_dict[trial_type][0][trial_idx][1]
                     trial_onset = output_dict[trial_type][0][trial_idx][2]
                     trial_offset = output_dict[trial_type][0][trial_idx][3]
+                    resp_latency = output_dict[trial_type][0][trial_idx][4]
                     writer.writerow([subj_date] + [trial_type] + [trialID] + [np.round(AMdepth, 2)] +
                                     [trial_onset] +  # Trial onset
                                     [trial_offset] +
+                                    [resp_latency] +
                                     [output_dict[trial_type][1][trial_idx]] +  # Response AUC dff
                                     [output_dict[trial_type][2][trial_idx]] +  # Response Peak dff
                                     [output_dict[trial_type][3][trial_idx]] +  # Baseline AUC dff
