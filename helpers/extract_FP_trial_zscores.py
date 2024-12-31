@@ -55,7 +55,7 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
         if cur_trial[cur_trial.keys().str.contains('reminder')].iloc[0] == 1:
             continue
 
-        # Use response time to get at the reward delivery
+        # Some RPvds circuits output latencies in msec... oops! 
         if ms_latency_values:
             cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] /= 1000
 
@@ -64,7 +64,8 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
         if response_latency_filter > 0:
             if cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] < response_latency_filter:
                 continue
-
+                
+        # Use response time to get at the reward delivery
         if align_to_response:
             response_time = cur_trial[cur_trial.keys().str.contains('response')].iloc[0]
         else:
