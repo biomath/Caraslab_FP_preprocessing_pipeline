@@ -66,7 +66,7 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
                 continue
 
         if align_to_response:
-            response_time = cur_trial[cur_trial.keys().str.contains('response')].iloc[0]
+            response_time = cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0]
         else:
             response_time = 0
 
