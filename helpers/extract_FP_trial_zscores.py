@@ -4,7 +4,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
 from copy import deepcopy
 import numpy as np
-from scipy.integrate import simps
+from scipy.integrate import simpson
 from scipy.signal import resample
 from astropy.convolution import Gaussian1DKernel, convolve_fft
 from os.path import sep
@@ -141,7 +141,7 @@ def __calculate_PeakValue_and_AUC(sigs, trial_info, baseline_window_start_time,
         bounded_baseline_xaxis = x_axis[0:int(baseline_window_start_time * fs)]
         bounded_baseline = sigs[trial_idx, 0:int(baseline_window_start_time * fs)]
 
-        auc_response[trial_idx] = simps(bounded_response, bounded_response_xaxis)
+        auc_response[trial_idx] = simpson(bounded_response, bounded_response_xaxis)
 
         # Peak can be positive or negative
         max_peak = np.max(bounded_response)
@@ -151,7 +151,7 @@ def __calculate_PeakValue_and_AUC(sigs, trial_info, baseline_window_start_time,
         else:
             peak[trial_idx] = min_peak
 
-        auc_baseline[trial_idx] = simps(bounded_baseline, bounded_baseline_xaxis)
+        auc_baseline[trial_idx] = simpson(bounded_baseline, bounded_baseline_xaxis)
 
     return auc_response, peak, auc_baseline
 
