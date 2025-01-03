@@ -39,6 +39,8 @@ def preprocess_files(memory_path, settings_dict):
     subject_id = split("_*_", recording_id)[0]
     subj_date = subject_id + '_' + cur_date
 
+    session_id = subject_id + '_' + subj_date
+
     # These are in alphabetical order. Must sort by date_trial or match with file
     key_path_info = glob(keys_path + sep + subject_id + '*' +
                          cur_date + '*' + cur_timestamp + "*_trialInfo.csv")
@@ -66,4 +68,25 @@ def preprocess_files(memory_path, settings_dict):
         print('Experiment type not found in key file name', flush=True)
         return
 
-    return subj_date, info_key_times, spout_key_times, trial_types
+    # If no JSON for that session exists, create sessionData
+    try:
+        # Load existing JSONs; will be empty if this is the first time running
+        json_filenames = glob(settings_dict['OUTPUT_PATH'] + sep + 'JSON files' + sep + '*json')
+
+        cur_sessionData_name = json_filenames[
+            json_filenames.index(settings_dict['OUTPUT_PATH'] + sep + 'JSON files' + sep + session_id + '_sessionData.json')]
+
+        with open(cur_sessionData_name, 'r') as json_file:
+            cur_sessionData = json.load(json_file)
+    except ValueError:
+        cur_sessionData = {'Subject': subject_id,
+                           'Date': subj_date,
+                           'Sessions': [],
+                           'Trial type': {}}
+
+    cur_sessionData["Sessions"].append(key_file_name[:-4])
+
+    for trial_type in trial_types:
+        cur_sessionData['Trial type'].update({trial_type: {}})
+
+    return subj_date, info_key_times, spout_key_times, trial_types, cur_sessionData

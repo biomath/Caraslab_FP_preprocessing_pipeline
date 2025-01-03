@@ -235,9 +235,10 @@ def run_zscore_extraction(input_list):
         raise UserWarning('No key files were found. Please check your paths.')
 
     for recording_path in session_date_paths:
-        subj_date, info_key_times, _, trial_types = preprocess_files(recording_path, SETTINGS_DICT)
+        subj_date, info_key_times, _, trial_types, cur_sessionData = preprocess_files(recording_path, SETTINGS_DICT)
         if info_key_times is None:  # If preprocessing can't find files, skip
             continue
+
         # Reset this here, because passive files will change this to 0
         response_latency_filter = SETTINGS_DICT['RESPONSE_LATENCY_FILTER']
 
@@ -698,6 +699,31 @@ def run_zscore_extraction(input_list):
             output_dict.update({trial_type: (trial_info,
                                              auc_response_dff, peak_dff, auc_baseline_dff,
                                              auc_response_zscore, peak_zscore, auc_baseline_zscore)})
+
+            # Output individual session curves in json files here
+            if SETTINGS_DICT['PIPELINE_SWITCHBOARD']['output_sessionData_json']:
+                def save_sessionData_json(cur_sessionData, dff_sigs, zscore_sigs, x_axis, output_dict, settings_dict):
+                    for trial_type in output_dict.keys():
+                        # Trial info
+                        trialID = [x[0] for x in output_dict[trial_type][0]]
+                        AMdepth = [x[1] for x in output_dict[trial_type][0]]
+                        trial_onset = [x[2] for x in output_dict[trial_type][0]]
+                        trial_offset = [x[3] for x in output_dict[trial_type][0]]
+                        resp_latency = [x[4] for x in output_dict[trial_type][0]]
+
+                        # Signal measurements
+                        response_auc_dff = output_dict[trial_type][1]
+                        response_peak_dff = output_dict[trial_type][2]
+                        baseline_auc_dff = output_dict[trial_type][3]
+                        response_auc_zscore = output_dict[trial_type][4]
+                        response_peak_zscore = output_dict[trial_type][5]
+                        baseline_auc_zscore = output_dict[trial_type][6]
+
+                        # Transients
+                        cur_sessionData['Trial type'][trial_type]['Calcium_dff'] = dff_sigs
+                        cur_sessionData['Trial type'][trial_type]['Calcium_zscore'] = zscore_sigs
+
+                save_sessionData_json(cur_sessionData, dff_sigs, zscore_sigs, x_axis, output_dict)
 
         # Write csv with area under curves
         with open(sep.join([trial_zscore_plots_path, file_name + '.csv']), 'w', newline='') as file:
