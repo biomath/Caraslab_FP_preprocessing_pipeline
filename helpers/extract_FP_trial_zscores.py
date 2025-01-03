@@ -17,6 +17,7 @@ import platform
 from helpers.format_axes import format_ax
 from helpers.preprocess_files import preprocess_files
 from helpers.stopwatch import tic, toc
+from helpers.write_json import write_json
 
 # Tweak the regex file separator for cross-platform compatibility
 if platform.system() == 'Windows':
@@ -200,6 +201,9 @@ def run_zscore_extraction(input_list):
     downsample_fs = SETTINGS_DICT['DOWNSAMPLE_RATE']
 
     ms_latency_values = SETTINGS_DICT['MS_LATENCY_VALUES']
+
+    # For data compactness when saving csvs and json files
+    _precision_decimals = 3
 
     # Plot colors and some parameters
     passive_color = 'black'
@@ -501,9 +505,9 @@ def run_zscore_extraction(input_list):
                 for time_point_idx, _ in enumerate(sig_mean_dict[trial_type][0]):
                     writer.writerow([subj_date] +
                                     [trial_type] +
-                                    [sig_mean_dict[trial_type][0][time_point_idx]] +
-                                    [sig_mean_dict[trial_type][1][time_point_idx]] +
-                                    [sig_mean_dict[trial_type][2][time_point_idx]])
+                                    [np.round(sig_mean_dict[trial_type][0][time_point_idx], _precision_decimals)] +
+                                    [np.round(sig_mean_dict[trial_type][1][time_point_idx], _precision_decimals)] +
+                                    [np.round(sig_mean_dict[trial_type][2][time_point_idx], _precision_decimals)])
         toc(t0)
 
     # Plot responses split by AM depth
@@ -646,9 +650,9 @@ def run_zscore_extraction(input_list):
                         writer.writerow([subj_date] +
                                         [trial_type] +
                                         [amdepth] +
-                                        [sig_mean_dict[trial_type][amdepth][0][time_point_idx]] +
-                                        [sig_mean_dict[trial_type][amdepth][1][time_point_idx]] +
-                                        [sig_mean_dict[trial_type][amdepth][2][time_point_idx]])
+                                        [np.round(sig_mean_dict[trial_type][amdepth][0][time_point_idx], _precision_decimals)] +
+                                        [np.round(sig_mean_dict[trial_type][amdepth][1][time_point_idx], _precision_decimals)] +
+                                        [np.round(sig_mean_dict[trial_type][amdepth][2][time_point_idx], _precision_decimals)])
         toc(t0)
 
     if SETTINGS_DICT['PIPELINE_SWITCHBOARD']['extract_trial_zscores']:
@@ -700,30 +704,45 @@ def run_zscore_extraction(input_list):
                                              auc_response_dff, peak_dff, auc_baseline_dff,
                                              auc_response_zscore, peak_zscore, auc_baseline_zscore)})
 
-            # Output individual session curves in json files here
+            # Output individual session info, curves and measurements in json files here
             if SETTINGS_DICT['PIPELINE_SWITCHBOARD']['output_sessionData_json']:
-                def save_sessionData_json(cur_sessionData, dff_sigs, zscore_sigs, x_axis, output_dict, settings_dict):
-                    for trial_type in output_dict.keys():
-                        # Trial info
-                        trialID = [x[0] for x in output_dict[trial_type][0]]
-                        AMdepth = [x[1] for x in output_dict[trial_type][0]]
-                        trial_onset = [x[2] for x in output_dict[trial_type][0]]
-                        trial_offset = [x[3] for x in output_dict[trial_type][0]]
-                        resp_latency = [x[4] for x in output_dict[trial_type][0]]
+                for trial_type in output_dict.keys():
+                    # Trial info
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['TrialID'] = \
+                        [x[0] for x in output_dict[trial_type][0]]
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['AMdepth'] = \
+                        [np.round(x[1], 2) for x in output_dict[trial_type][0]]
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Trial_onset'] = \
+                        [np.round(x[2], _precision_decimals) for x in output_dict[trial_type][0]]
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Trial_offset'] = \
+                        [np.round(x[3], _precision_decimals) for x in output_dict[trial_type][0]]
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['RespLatency'] = \
+                        [np.round(x[4], _precision_decimals) for x in output_dict[trial_type][0]]
 
-                        # Signal measurements
-                        response_auc_dff = output_dict[trial_type][1]
-                        response_peak_dff = output_dict[trial_type][2]
-                        baseline_auc_dff = output_dict[trial_type][3]
-                        response_auc_zscore = output_dict[trial_type][4]
-                        response_peak_zscore = output_dict[trial_type][5]
-                        baseline_auc_zscore = output_dict[trial_type][6]
+                    # Signal measurements
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Response_auc_dff'] = (
+                        np.round(output_dict[trial_type][1], _precision_decimals))
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Response_peak_dff'] = (
+                        np.round(output_dict[trial_type][2], _precision_decimals))
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Baseline_auc_dff'] = (
+                        np.round(output_dict[trial_type][3], _precision_decimals))
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Response_auc_zscore'] = (
+                        np.round(output_dict[trial_type][4], _precision_decimals))
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Response_peak_zscore'] = (
+                        np.round(output_dict[trial_type][5], _precision_decimals))
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Baseline_auc_zscore'] = (
+                        np.round(output_dict[trial_type][6], _precision_decimals))
 
-                        # Transients
-                        cur_sessionData['Trial type'][trial_type]['Calcium_dff'] = dff_sigs
-                        cur_sessionData['Trial type'][trial_type]['Calcium_zscore'] = zscore_sigs
+                    # Transients and time axis
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Time_s'] = (
+                        np.round(x_axis, _precision_decimals))
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Calcium_dff'] = (
+                        np.round(dff_sigs, _precision_decimals))
+                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Calcium_zscore'] = (
+                        np.round(zscore_sigs, _precision_decimals))
 
-                save_sessionData_json(cur_sessionData, dff_sigs, zscore_sigs, x_axis, output_dict)
+                write_json(cur_sessionData, output_path + sep + 'JSON files',
+                           cur_sessionData['Subject'] + '_' + cur_sessionData['Date'] + '_sessionData.json')
 
         # Write csv with area under curves
         with open(sep.join([trial_zscore_plots_path, file_name + '.csv']), 'w', newline='') as file:
@@ -739,19 +758,19 @@ def run_zscore_extraction(input_list):
                     # output_list[x][0] is (cur_trial['trialid'], cur_trial['amdepth'], cur_trial['trial_onset'])
 
                     trialID = output_dict[trial_type][0][trial_idx][0]
-                    AMdepth = output_dict[trial_type][0][trial_idx][1]
-                    trial_onset = output_dict[trial_type][0][trial_idx][2]
-                    trial_offset = output_dict[trial_type][0][trial_idx][3]
-                    resp_latency = output_dict[trial_type][0][trial_idx][4]
-                    writer.writerow([subj_date] + [trial_type] + [trialID] + [np.round(AMdepth, 2)] +
-                                    [trial_onset] +  # Trial onset
-                                    [trial_offset] +
-                                    [resp_latency] +
-                                    [output_dict[trial_type][1][trial_idx]] +  # Response AUC dff
-                                    [output_dict[trial_type][2][trial_idx]] +  # Response Peak dff
-                                    [output_dict[trial_type][3][trial_idx]] +  # Baseline AUC dff
-                                    [output_dict[trial_type][4][trial_idx]] +  # Response AUC zscore
-                                    [output_dict[trial_type][5][trial_idx]] +  # Response Peak zscore
-                                    [output_dict[trial_type][6][trial_idx]]  # Baseline AUC zscore
+                    AMdepth = np.round(output_dict[trial_type][0][trial_idx][1], 2)
+                    trial_onset = np.round(output_dict[trial_type][0][trial_idx][2], _precision_decimals)
+                    trial_offset = np.round(output_dict[trial_type][0][trial_idx][3], _precision_decimals)
+                    resp_latency = np.round(output_dict[trial_type][0][trial_idx][4], _precision_decimals)
+                    writer.writerow([subj_date] + [trial_type] + [trialID] + [AMdepth] +
+                                    [np.round(trial_onset, _precision_decimals)] +  # Trial onset
+                                    [np.round(trial_offset, _precision_decimals)] +
+                                    [np.round(resp_latency, _precision_decimals)] +
+                                    [np.round(output_dict[trial_type][1][trial_idx], _precision_decimals)] +  # Response AUC dff
+                                    [np.round(output_dict[trial_type][2][trial_idx], _precision_decimals)] +  # Response Peak dff
+                                    [np.round(output_dict[trial_type][3][trial_idx], _precision_decimals)] +  # Baseline AUC dff
+                                    [np.round(output_dict[trial_type][4][trial_idx], _precision_decimals)] +  # Response AUC zscore
+                                    [np.round(output_dict[trial_type][5][trial_idx], _precision_decimals)] +  # Response Peak zscore
+                                    [np.round(output_dict[trial_type][6][trial_idx], _precision_decimals)]  # Baseline AUC zscore
                                     )
         toc(t0)

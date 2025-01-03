@@ -82,11 +82,16 @@ def preprocess_files(memory_path, settings_dict):
         cur_sessionData = {'Subject': subject_id,
                            'Date': subj_date,
                            'Sessions': [],
-                           'Trial type': {}}
+                           'Alignment': {}
+                           }
 
-    cur_sessionData["Sessions"].append(key_file_name[:-4])
+    session_id = key_file_name[:-4]
+    if session_id not in cur_sessionData['Sessions']:
+        cur_sessionData['Sessions'].append(session_id)
+
+    cur_sessionData['Alignment'].update({settings_dict['TRIAL_OR_RESPONSE_ALIGNED']: {'Trial type': {}}})
 
     for trial_type in trial_types:
-        cur_sessionData['Trial type'].update({trial_type: {}})
+        cur_sessionData['Alignment'][settings_dict['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'].update({trial_type: {}})
 
     return subj_date, info_key_times, spout_key_times, trial_types, cur_sessionData
