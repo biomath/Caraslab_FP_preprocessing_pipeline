@@ -5,7 +5,7 @@ import pandas as pd
 from copy import deepcopy
 import numpy as np
 from scipy.integrate import simpson
-from scipy.signal import resample
+from scipy.signal import resample, decimate
 from astropy.convolution import Gaussian1DKernel, convolve_fft
 from os.path import sep
 from os import makedirs
@@ -330,25 +330,26 @@ def run_zscore_extraction(input_list):
                                                    ms_latency_values=ms_latency_values)
 
             if downsample_fs is not None:
-                downsample_q = fs // downsample_fs
+                downsample_q = int(fs // downsample_fs)
                 for sig_idx in np.arange(0, len(cur_signals)):
                     if len(cur_signals[sig_idx][1]) > 0:
-                        cur_signals[sig_idx][1] = resample(cur_signals[sig_idx][1],
-                                                           int(np.size(cur_signals[sig_idx][1]) // downsample_q))
-                        cur_signals[sig_idx][1] = convolve_fft(cur_signals[sig_idx][1], Gaussian1DKernel(stddev=10),
-                                                               preserve_nan=True)
-
-                        cur_signals[sig_idx][2] = resample(cur_signals[sig_idx][2],
-                                                           int(np.size(cur_signals[sig_idx][2]) // downsample_q))
-                        cur_signals[sig_idx][2] = convolve_fft(cur_signals[sig_idx][2], Gaussian1DKernel(stddev=10),
-                                                               preserve_nan=True)
+                        cur_signals[sig_idx][1] = decimate(cur_signals[sig_idx][1], downsample_q)
+                        # cur_signals[sig_idx][1] = resample(cur_signals[sig_idx][1],
+                        #                                    int(np.size(cur_signals[sig_idx][1]) // downsample_q))
+                        # cur_signals[sig_idx][1] = convolve_fft(cur_signals[sig_idx][1], Gaussian1DKernel(stddev=10),
+                        #                                        preserve_nan=True)
+                        cur_signals[sig_idx][2] = decimate(cur_signals[sig_idx][2], downsample_q)
+                        # cur_signals[sig_idx][2] = resample(cur_signals[sig_idx][2],
+                        #                                    int(np.size(cur_signals[sig_idx][2]) // downsample_q))
+                        # cur_signals[sig_idx][2] = convolve_fft(cur_signals[sig_idx][2], Gaussian1DKernel(stddev=10),
+                        #                                        preserve_nan=True)
 
             trial_type_dict.update({trial_type: {'info': [x[0] for x in cur_signals],
                                                  'dff_signal': [x[1] for x in cur_signals],
                                                  'dff_baseline': [x[2] for x in cur_signals]}})
     toc(t0)
 
-    # uniformize lengths and exclude truncated signals by more than half sampling rate points
+    # Uniformize lengths and exclude truncated signals by more than half sampling rate points
     # The median length should be the target
     tolerance = fs / 2
     sig_lengths = []
@@ -706,39 +707,41 @@ def run_zscore_extraction(input_list):
 
             # Output individual session info, curves and measurements in json files here
             if SETTINGS_DICT['PIPELINE_SWITCHBOARD']['output_sessionData_json']:
+                analysis_id = SETTINGS_DICT['ANALYSIS_ID']
+                t_or_r_align = SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']
                 for trial_type in output_dict.keys():
                     # Trial info
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['TrialID'] = \
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['TrialID'] = \
                         [x[0] for x in output_dict[trial_type][0]]
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['AMdepth'] = \
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['AMdepth'] = \
                         [np.round(x[1], 2) for x in output_dict[trial_type][0]]
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Trial_onset'] = \
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Trial_onset'] = \
                         [np.round(x[2], _precision_decimals) for x in output_dict[trial_type][0]]
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Trial_offset'] = \
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Trial_offset'] = \
                         [np.round(x[3], _precision_decimals) for x in output_dict[trial_type][0]]
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['RespLatency'] = \
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['RespLatency'] = \
                         [np.round(x[4], _precision_decimals) for x in output_dict[trial_type][0]]
 
                     # Signal measurements
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Response_auc_dff'] = (
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Response_auc_dff'] = (
                         np.round(output_dict[trial_type][1], _precision_decimals))
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Response_peak_dff'] = (
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Response_peak_dff'] = (
                         np.round(output_dict[trial_type][2], _precision_decimals))
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Baseline_auc_dff'] = (
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Baseline_auc_dff'] = (
                         np.round(output_dict[trial_type][3], _precision_decimals))
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Response_auc_zscore'] = (
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Response_auc_zscore'] = (
                         np.round(output_dict[trial_type][4], _precision_decimals))
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Response_peak_zscore'] = (
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Response_peak_zscore'] = (
                         np.round(output_dict[trial_type][5], _precision_decimals))
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Baseline_auc_zscore'] = (
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Baseline_auc_zscore'] = (
                         np.round(output_dict[trial_type][6], _precision_decimals))
 
                     # Transients and time axis
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Time_s'] = (
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Time_s'] = (
                         np.round(x_axis, _precision_decimals))
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Calcium_dff'] = (
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Calcium_dff'] = (
                         np.round(dff_sigs, _precision_decimals))
-                    cur_sessionData['Alignment'][SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'][trial_type]['Calcium_zscore'] = (
+                    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['Calcium_zscore'] = (
                         np.round(zscore_sigs, _precision_decimals))
 
                 write_json(cur_sessionData, output_path + sep + 'JSON files',

@@ -1,8 +1,11 @@
-from re import split, search
+from re import split
 from glob import glob
-from datetime import datetime
+
 from platform import system
 from os.path import sep
+
+from helpers.write_json import write_json
+
 # Tweak the regex file separator for cross-platform compatibility
 if system() == 'Windows':
     REGEX_SEP = sep * 2
@@ -39,8 +42,6 @@ def preprocess_files(memory_path, settings_dict):
     subject_id = split("_*_", recording_id)[0]
     subj_date = subject_id + '_' + cur_date
 
-    session_id = subject_id + '_' + subj_date
-
     # These are in alphabetical order. Must sort by date_trial or match with file
     key_path_info = glob(keys_path + sep + subject_id + '*' +
                          cur_date + '*' + cur_timestamp + "*_trialInfo.csv")
@@ -69,29 +70,52 @@ def preprocess_files(memory_path, settings_dict):
         return
 
     # If no JSON for that session exists, create sessionData
+    analysis_id = settings_dict['ANALYSIS_ID']
+    t_or_r_aligned = settings_dict['TRIAL_OR_RESPONSE_ALIGNED']
     try:
         # Load existing JSONs; will be empty if this is the first time running
         json_filenames = glob(settings_dict['OUTPUT_PATH'] + sep + 'JSON files' + sep + '*json')
 
         cur_sessionData_name = json_filenames[
-            json_filenames.index(settings_dict['OUTPUT_PATH'] + sep + 'JSON files' + sep + session_id + '_sessionData.json')]
+            json_filenames.index(settings_dict['OUTPUT_PATH'] + sep + 'JSON files' + sep + subj_date + '_sessionData.json')]
 
         with open(cur_sessionData_name, 'r') as json_file:
             cur_sessionData = json.load(json_file)
-    except ValueError:
-        cur_sessionData = {'Subject': subject_id,
-                           'Date': subj_date,
-                           'Sessions': [],
-                           'Alignment': {}
-                           }
+    except ValueError:  # Create new sessionData
+        cur_sessionData = {
+            'Subject': subject_id,
+            'Date': cur_date,
+            'AnalysisID': {
+                analysis_id: {
+                    'Sessions': [],
+                    'Alignment': {},
+                    'Settings' : settings_dict  # Add full settings of this run just in case
+                }
+            }
+        }
+
+    if analysis_id not in cur_sessionData['AnalysisID']:
+        cur_sessionData['AnalysisID'].update({
+            analysis_id: {
+                'Sessions': [],
+                'Alignment': {},
+                'Settings': settings_dict
+            }
+        })
 
     session_id = key_file_name[:-4]
-    if session_id not in cur_sessionData['Sessions']:
-        cur_sessionData['Sessions'].append(session_id)
+    if session_id not in cur_sessionData['AnalysisID'][analysis_id]['Sessions']:
+        cur_sessionData['AnalysisID'][analysis_id]['Sessions'].append(session_id)
 
-    cur_sessionData['Alignment'].update({settings_dict['TRIAL_OR_RESPONSE_ALIGNED']: {'Trial type': {}}})
+    if t_or_r_aligned not in cur_sessionData['AnalysisID'][analysis_id]['Alignment']:
+        cur_sessionData['AnalysisID'][analysis_id]['Alignment'].update({t_or_r_aligned: {'Trial type': {}}})
 
     for trial_type in trial_types:
-        cur_sessionData['Alignment'][settings_dict['TRIAL_OR_RESPONSE_ALIGNED']]['Trial type'].update({trial_type: {}})
+        cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_aligned]['Trial type'].update({trial_type: {}})
+
+
+    if settings_dict['PIPELINE_SWITCHBOARD']['output_sessionData_json']:
+        write_json(cur_sessionData, settings_dict['OUTPUT_PATH'] + sep + 'JSON files',
+                   cur_sessionData['Subject'] + '_' + cur_sessionData['Date'] + '_sessionData.json')
 
     return subj_date, info_key_times, spout_key_times, trial_types, cur_sessionData
