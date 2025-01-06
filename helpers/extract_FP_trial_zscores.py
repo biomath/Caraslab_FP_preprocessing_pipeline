@@ -40,13 +40,12 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 def __get_trialID_dff_signal(processed_signal, key_times_df,
-                             paradigm_type,
                              baseline_start_for_zscore=0., baseline_end_for_zscore=1.,
                              response_window_duration=4.,
                              response_latency_filter=False,
                              align_to_response=False,
                              subtract_405=True,
-                             ms_latency_values=True):
+                             ms_latency_values=False):
     ret_list = list()
     # There are inconsistencies between the Aversive and Appetitive paradigm in the column naming.
     # Make all lower case here
@@ -71,9 +70,11 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
         else:
             response_time = 0
 
+        _signal_start = (cur_trial['trial_onset'] - baseline_start_for_zscore + response_time)
+        _signal_end = (cur_trial['trial_onset'] + response_window_duration + response_time)
         signal_around_trial = processed_signal[
-            (processed_signal['Time'] > (cur_trial['trial_onset'] - baseline_start_for_zscore + response_time)) &
-            (processed_signal['Time'] <= (cur_trial['trial_onset'] + response_window_duration + response_time))]
+            (processed_signal['Time'] > _signal_start) &
+            (processed_signal['Time'] <= _signal_end)]
 
         # 405 fit-removed signal
         if subtract_405:
@@ -84,9 +85,11 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
         # z-score it
 
         # Use baseline just before response
+        _baseline_start = (cur_trial['trial_onset'] - baseline_start_for_zscore + response_time)
+        _baseline_end = (cur_trial['trial_onset'] - baseline_end_for_zscore + response_time)
         baseline_signal = processed_signal[
-            (processed_signal['Time'] > (cur_trial['trial_onset'] - baseline_start_for_zscore + response_time)) &
-            (processed_signal['Time'] <= (cur_trial['trial_onset'] - baseline_end_for_zscore + response_time))][
+            (processed_signal['Time'] > _baseline_start) &
+            (processed_signal['Time'] <= _baseline_end)][
             sig_column].values
 
         # Use baseline before sound onset (even when aligned by response time)
@@ -124,24 +127,23 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
 
 
 def __calculate_PeakValue_and_AUC(sigs, trial_info, baseline_window_start_time,
-                                  fs, x_axis,
+                                  sampling_frequency, x_axis,
                                   auc_start=0, auc_end=4):
     auc_response = np.zeros(np.shape(sigs)[0])
     peak = np.zeros(np.shape(sigs)[0])
     auc_baseline = np.zeros(np.shape(sigs)[0])
     for trial_idx, cur_trial in enumerate(trial_info):
+        bounded_response_xaxis = x_axis[int((auc_start + baseline_window_start_time) * sampling_frequency):
+                                        int((auc_end + baseline_window_start_time) * sampling_frequency)]
 
-        bounded_response_xaxis = x_axis[int((auc_start + baseline_window_start_time) * fs):
-                                        int((auc_end + baseline_window_start_time) * fs)]
-
-        bounded_response = sigs[trial_idx, int((auc_start + baseline_window_start_time) * fs):
-                                           int((auc_end + baseline_window_start_time) * fs)]
+        bounded_response = sigs[trial_idx, int((auc_start + baseline_window_start_time) * sampling_frequency):
+                                           int((auc_end + baseline_window_start_time) * sampling_frequency)]
 
         # 0-index is already baseline_start_time
-        bounded_baseline_xaxis = x_axis[0:int(baseline_window_start_time * fs)]
-        bounded_baseline = sigs[trial_idx, 0:int(baseline_window_start_time * fs)]
+        bounded_baseline_xaxis = x_axis[0:int(baseline_window_start_time * sampling_frequency)]
+        bounded_baseline = sigs[trial_idx, 0:int(baseline_window_start_time * sampling_frequency)]
 
-        auc_response[trial_idx] = simpson(bounded_response, bounded_response_xaxis)
+        auc_response[trial_idx] = simpson(bounded_response, x=bounded_response_xaxis)
 
         # Peak can be positive or negative
         max_peak = np.max(bounded_response)
@@ -151,7 +153,7 @@ def __calculate_PeakValue_and_AUC(sigs, trial_info, baseline_window_start_time,
         else:
             peak[trial_idx] = min_peak
 
-        auc_baseline[trial_idx] = simpson(bounded_baseline, bounded_baseline_xaxis)
+        auc_baseline[trial_idx] = simpson(bounded_baseline, x=bounded_baseline_xaxis)
 
     return auc_response, peak, auc_baseline
 
@@ -168,7 +170,7 @@ def __get_trialID_zscore(trial_type_dict):
 
             # z-score it
             baseline_mean = np.nanmean(trial_baseline)
-            baseline_std = np.nanstd(trial_baseline)
+            baseline_std = np.nanstd(trial_baseline, ddof=1)
 
             dff_zscore = (trial_signal - baseline_mean) / baseline_std
             dff_zscore_list.append(dff_zscore)
@@ -232,7 +234,7 @@ def run_zscore_extraction(input_list):
         align_to_response = True
 
     trial_type_dict = dict()
-    fs = 0
+    sampling_frequency = 0
     subj_date = ''
     print('Loading and z-scoring signals... ', end='', flush=True)
     t0 = tic()
@@ -263,9 +265,12 @@ def run_zscore_extraction(input_list):
 
         # If not set, approximate sampling rate
         if SETTINGS_DICT['SAMPLING_RATE'] is None:
-            fs = 1 / np.mean(np.diff(processed_signal['Time']))
+            sampling_frequency = 1 / np.mean(np.diff(processed_signal['Time']))
         else:
-            fs = SETTINGS_DICT['SAMPLING_RATE']
+            sampling_frequency = SETTINGS_DICT['SAMPLING_RATE']
+
+        # This placeholder will be modified if downsampling is desired
+        downsample_q = 1
 
         for trial_type in trial_types:
             if paradigm_type == '1IFC':
@@ -328,32 +333,37 @@ def run_zscore_extraction(input_list):
                                                    response_latency_filter=response_latency_filter,
                                                    align_to_response=align_to_response,
                                                    subtract_405=subtract_405,
-                                                   paradigm_type=paradigm_type,
                                                    ms_latency_values=ms_latency_values)
 
             if downsample_fs is not None:
-                downsample_q = int(fs // downsample_fs)
+                downsample_q = int(sampling_frequency // downsample_fs)
+                ret_signals = deepcopy(cur_signals)
                 for sig_idx in np.arange(0, len(cur_signals)):
                     if len(cur_signals[sig_idx][1]) > 0:
-                        cur_signals[sig_idx][1] = decimate(cur_signals[sig_idx][1], downsample_q)
+                        ret_signals[sig_idx][1] = decimate(cur_signals[sig_idx][1], downsample_q)
                         # cur_signals[sig_idx][1] = resample(cur_signals[sig_idx][1],
                         #                                    int(np.size(cur_signals[sig_idx][1]) // downsample_q))
                         # cur_signals[sig_idx][1] = convolve_fft(cur_signals[sig_idx][1], Gaussian1DKernel(stddev=10),
                         #                                        preserve_nan=True)
-                        cur_signals[sig_idx][2] = decimate(cur_signals[sig_idx][2], downsample_q)
+                        ret_signals[sig_idx][2] = decimate(cur_signals[sig_idx][2], downsample_q)
                         # cur_signals[sig_idx][2] = resample(cur_signals[sig_idx][2],
                         #                                    int(np.size(cur_signals[sig_idx][2]) // downsample_q))
                         # cur_signals[sig_idx][2] = convolve_fft(cur_signals[sig_idx][2], Gaussian1DKernel(stddev=10),
                         #                                        preserve_nan=True)
+                cur_signals = ret_signals
+                # Update sampling_frequency
 
             trial_type_dict.update({trial_type: {'info': [x[0] for x in cur_signals],
                                                  'dff_signal': [x[1] for x in cur_signals],
                                                  'dff_baseline': [x[2] for x in cur_signals]}})
     toc(t0)
 
+    # Update sampling frequency to match the downsampled frequency
+    sampling_frequency /= downsample_q
+
     # Uniformize lengths and exclude truncated signals by more than half sampling rate points
     # The median length should be the target
-    tolerance = fs / 2
+    tolerance = sampling_frequency / 2
     sig_lengths = []
     print('Uniformizing signal lengths for plotting... ', end='', flush=True)
     t0 = tic()
@@ -447,10 +457,9 @@ def run_zscore_extraction(input_list):
                 all_trial_info = trial_type_dict[trial_type]['info']
                 sigs = np.zeros((len(trial_type_dict[trial_type]['zscore']), int(min_length)))
                 for i, trial_info in enumerate(all_trial_info):
-                    try:
-                        ts = trial_type_dict[trial_type]['zscore'][i]
-                    except IndexError:
-                        pass
+
+                    ts = trial_type_dict[trial_type]['zscore'][i]
+
                     if ams_to_analyze is not None:
                         if trial_info[1] in ams_to_analyze:
                             sigs[i, 0:len(ts)] = ts
@@ -469,7 +478,7 @@ def run_zscore_extraction(input_list):
                 plot_sigs = sigs
 
                 signals_mean = np.nanmean(plot_sigs, axis=0)
-                signals_sem = np.nanstd(plot_sigs, axis=0) / np.sqrt(np.count_nonzero(~np.isnan(plot_sigs), axis=0))
+                signals_sem = np.nanstd(plot_sigs, axis=0, ddof=1) / np.sqrt(np.count_nonzero(~np.isnan(plot_sigs), axis=0))
                 x_axis = np.linspace(-baseline_start_for_zscore, response_window_duration, len(signals_mean))
                 ax.plot(x_axis, signals_mean, color=cur_color, linestyle=linestyle)
                 ax.fill_between(x_axis, signals_mean - signals_sem, signals_mean + signals_sem,
@@ -598,7 +607,7 @@ def run_zscore_extraction(input_list):
                         plot_sigs = sigs
 
                         signals_mean = np.nanmean(plot_sigs, axis=0)
-                        signals_sem = np.nanstd(plot_sigs, axis=0) / np.sqrt(
+                        signals_sem = np.nanstd(plot_sigs, axis=0, ddof=1) / np.sqrt(
                             np.count_nonzero(~np.isnan(plot_sigs), axis=0))
                         x_axis = np.linspace(-baseline_start_for_zscore, response_window_duration,
                                              len(signals_mean))
@@ -696,16 +705,20 @@ def run_zscore_extraction(input_list):
             # Get the dff signal measurements
             auc_response_dff, peak_dff, auc_baseline_dff = __calculate_PeakValue_and_AUC(
                 dff_sigs, trial_info, baseline_window_start_time=baseline_start_for_zscore,
-                fs=fs, x_axis=x_axis, auc_start=auc_start, auc_end=auc_end)
+                sampling_frequency=sampling_frequency, x_axis=x_axis, auc_start=auc_start, auc_end=auc_end)
 
             # Get the z-scored signal measurements
             auc_response_zscore, peak_zscore, auc_baseline_zscore = __calculate_PeakValue_and_AUC(
                 zscore_sigs, trial_info, baseline_window_start_time=baseline_start_for_zscore,
-                fs=fs, x_axis=x_axis, auc_start=auc_start, auc_end=auc_end)
+                sampling_frequency=sampling_frequency, x_axis=x_axis, auc_start=auc_start, auc_end=auc_end)
 
             output_dict.update({trial_type: (trial_info,
-                                             auc_response_dff, peak_dff, auc_baseline_dff,
-                                             auc_response_zscore, peak_zscore, auc_baseline_zscore)})
+                                             auc_response_dff,
+                                             peak_dff,
+                                             auc_baseline_dff,
+                                             auc_response_zscore,
+                                             peak_zscore,
+                                             auc_baseline_zscore)})
 
             # Output individual session info, curves and measurements in json files here
             if SETTINGS_DICT['PIPELINE_SWITCHBOARD']['output_sessionData_json']:
@@ -751,10 +764,16 @@ def run_zscore_extraction(input_list):
         with open(sep.join([output_plots_path, file_name + '.csv']), 'w', newline='') as file:
             writer = csv.writer(file, delimiter=',')
 
-            writer.writerow(['Recording'] + ['Trial_type'] + ['TrialID'] +
-                            ['AMDepth'] + ['Trial_Onset'] + ['Trial_Offset'] + ['RespLatency'] +
-                            ['Area_under_curve_dff'] + ['Peak_value_dff'] + ['Baseline_area_under_curve_dff'] +
-                            ['Area_under_curve_zscore'] + ['Peak_value_zscore'] + ['Baseline_area_under_curve_zscore'])
+            writer.writerow(['Recording'] + ['Trial_type'] + ['TrialID'] + ['AMDepth'] +
+                            ['Trial_Onset'] +
+                            ['Trial_Offset'] +
+                            ['RespLatency'] +
+                            ['Area_under_curve_dff'] +
+                            ['Peak_value_dff'] +
+                            ['Baseline_area_under_curve_dff'] +
+                            ['Area_under_curve_zscore'] +
+                            ['Peak_value_zscore'] +
+                            ['Baseline_area_under_curve_zscore'])
 
             for trial_type in output_dict.keys():
                 for trial_idx in range(len(output_dict[trial_type][0])):
@@ -765,6 +784,18 @@ def run_zscore_extraction(input_list):
                     trial_onset = np.round(output_dict[trial_type][0][trial_idx][2], _precision_decimals)
                     trial_offset = np.round(output_dict[trial_type][0][trial_idx][3], _precision_decimals)
                     resp_latency = np.round(output_dict[trial_type][0][trial_idx][4], _precision_decimals)
+
+                    # Reference:
+                    # writer.writerow(['Recording'] + ['Trial_type'] + ['TrialID'] + ['AMDepth'] +
+                    #                             ['Trial_Onset'] +
+                    #                             ['Trial_Offset'] +
+                    #                             ['RespLatency'] +
+                    #                             ['Area_under_curve_dff'] +
+                    #                             ['Peak_value_dff'] +
+                    #                             ['Baseline_area_under_curve_dff'] +
+                    #                             ['Area_under_curve_zscore'] +
+                    #                             ['Peak_value_zscore'] +
+                    #                             ['Baseline_area_under_curve_zscore'])
                     writer.writerow([subj_date] + [trial_type] + [trialID] + [AMdepth] +
                                     [np.round(trial_onset, _precision_decimals)] +  # Trial onset
                                     [np.round(trial_offset, _precision_decimals)] +
