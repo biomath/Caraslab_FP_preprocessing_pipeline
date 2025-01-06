@@ -1,19 +1,19 @@
-from typing import List
-
-from matplotlib.backends.backend_pdf import PdfPages
-import pandas as pd
+import platform
+from datetime import datetime
 from copy import deepcopy
-import numpy as np
-from scipy.integrate import simpson
-from scipy.signal import resample, decimate
-from astropy.convolution import Gaussian1DKernel, convolve_fft
 from os.path import sep
 from os import makedirs
 import csv
+import json
+
+import numpy as np
+import pandas as pd
+from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
 from matplotlib import patches, colormaps
-import json
-import platform
+from scipy.integrate import simpson
+from scipy.signal import resample, decimate
+
 from helpers.format_axes import format_ax
 from helpers.preprocess_files import preprocess_files
 from helpers.stopwatch import tic, toc
@@ -192,9 +192,16 @@ def run_zscore_extraction(input_list):
     target_sound_onset = SETTINGS_DICT['TARGET_SOUND_ONSET']
     target_sound_offset = SETTINGS_DICT['TARGET_SOUND_OFFSET']
 
+    analysis_id = SETTINGS_DICT['ANALYSIS_ID']
+    t_or_r_align = SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']
+
     output_path = SETTINGS_DICT['OUTPUT_PATH']
-    trial_zscore_plots_path = output_path + sep + 'Aligned signals'
+    trial_zscore_plots_path = output_path + sep + 'Aligned signals - ' + analysis_id + sep + t_or_r_align
     makedirs(trial_zscore_plots_path, exist_ok=True)
+
+    # Log the settings dictionary for reference
+    write_json(SETTINGS_DICT, trial_zscore_plots_path,
+               'settings_dict_' + datetime.now().strftime("%m%d%y%H%M%S") + '.json')
 
     response_latency_filter = SETTINGS_DICT['RESPONSE_LATENCY_FILTER']
 
@@ -707,8 +714,6 @@ def run_zscore_extraction(input_list):
 
             # Output individual session info, curves and measurements in json files here
             if SETTINGS_DICT['PIPELINE_SWITCHBOARD']['output_sessionData_json']:
-                analysis_id = SETTINGS_DICT['ANALYSIS_ID']
-                t_or_r_align = SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']
                 for trial_type in output_dict.keys():
                     # Trial info
                     cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]['TrialID'] = \
