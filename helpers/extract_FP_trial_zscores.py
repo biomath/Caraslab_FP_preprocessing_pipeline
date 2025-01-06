@@ -196,12 +196,7 @@ def run_zscore_extraction(input_list):
     t_or_r_align = SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']
 
     output_path = SETTINGS_DICT['OUTPUT_PATH']
-    trial_zscore_plots_path = output_path + sep + 'Aligned signals - ' + analysis_id + sep + t_or_r_align
-    makedirs(trial_zscore_plots_path, exist_ok=True)
-
-    # Log the settings dictionary for reference
-    write_json(SETTINGS_DICT, trial_zscore_plots_path,
-               'settings_dict_' + datetime.now().strftime("%m%d%y%H%M%S") + '.json')
+    output_plots_path = SETTINGS_DICT['OUTPUT_PLOTS_PATH']
 
     response_latency_filter = SETTINGS_DICT['RESPONSE_LATENCY_FILTER']
 
@@ -409,7 +404,7 @@ def run_zscore_extraction(input_list):
         print('Plotting summary trial z-scores... ', end='', flush=True)
         t0 = tic()
         sig_mean_dict = dict()
-        with PdfPages(sep.join([trial_zscore_plots_path, file_name + '.pdf'])) as pdf:
+        with PdfPages(sep.join([output_plots_path, file_name + '.pdf'])) as pdf:
             # fig, ax = plt.subplots(1, 1)
             fig = plt.figure()
             ax = fig.add_subplot(111)
@@ -503,7 +498,7 @@ def run_zscore_extraction(input_list):
             pdf.savefig()
             plt.close()
 
-        with open(sep.join([trial_zscore_plots_path, file_name + '_curves.csv']), 'w', newline='') as file:
+        with open(sep.join([output_plots_path, file_name + '_curves.csv']), 'w', newline='') as file:
             writer = csv.writer(file, delimiter=',')
 
             writer.writerow(['Recording'] + ['Trial_type'] + ['Time_s'] + ['Signal_mean'] + [
@@ -539,7 +534,7 @@ def run_zscore_extraction(input_list):
         else:
             all_ams = ams_to_analyze
 
-        with PdfPages(sep.join([trial_zscore_plots_path, file_name + '.pdf'])) as pdf:
+        with PdfPages(sep.join([output_plots_path, file_name + '.pdf'])) as pdf:
             # Trial grouping for plotting, if you'd like to combine responses
             # Example: trial_groups = [('Hit', 'Reject'), ('Miss', 'False alarm')]
             if paradigm_type == 'AversiveAM':
@@ -646,7 +641,7 @@ def run_zscore_extraction(input_list):
                 pdf.savefig()
                 plt.close()
 
-        with open(sep.join([trial_zscore_plots_path, file_name + '_curves.csv']), 'w', newline='') as file:
+        with open(sep.join([output_plots_path, file_name + '_curves.csv']), 'w', newline='') as file:
             writer = csv.writer(file, delimiter=',')
 
             writer.writerow(['Recording'] + ['Trial_type'] + ['AMDepth'] + ['Time_s'] + ['Signal_mean'] + [
@@ -753,7 +748,7 @@ def run_zscore_extraction(input_list):
                            cur_sessionData['Subject'] + '_' + cur_sessionData['Date'] + '_sessionData.json')
 
         # Write csv with area under curves
-        with open(sep.join([trial_zscore_plots_path, file_name + '.csv']), 'w', newline='') as file:
+        with open(sep.join([output_plots_path, file_name + '.csv']), 'w', newline='') as file:
             writer = csv.writer(file, delimiter=',')
 
             writer.writerow(['Recording'] + ['Trial_type'] + ['TrialID'] +
