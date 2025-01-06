@@ -88,8 +88,7 @@ def preprocess_files(memory_path, settings_dict):
             'AnalysisID': {
                 analysis_id: {
                     'Sessions': [],
-                    'Alignment': {},
-                    'Settings' : settings_dict  # Add full settings of this run just in case
+                    'Alignment': {}
                 }
             }
         }
@@ -98,8 +97,7 @@ def preprocess_files(memory_path, settings_dict):
         cur_sessionData['AnalysisID'].update({
             analysis_id: {
                 'Sessions': [],
-                'Alignment': {},
-                'Settings': settings_dict
+                'Alignment': {}
             }
         })
 
@@ -108,7 +106,11 @@ def preprocess_files(memory_path, settings_dict):
         cur_sessionData['AnalysisID'][analysis_id]['Sessions'].append(session_id)
 
     if t_or_r_aligned not in cur_sessionData['AnalysisID'][analysis_id]['Alignment']:
-        cur_sessionData['AnalysisID'][analysis_id]['Alignment'].update({t_or_r_aligned: {'Trial type': {}}})
+        cur_sessionData['AnalysisID'][analysis_id]['Alignment'].update({t_or_r_aligned: {
+            'Trial type': {}}})
+
+    # Store full settings just in case
+    cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_aligned]['Settings'] = settings_dict
 
     for trial_type in trial_types:
         cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_aligned]['Trial type'].update({trial_type: {}})
