@@ -138,7 +138,7 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
                           cur_amdepth,
                           cur_trial['trial_onset'],
                           cur_trial['trial_offset'],
-                          cur_trial['resplatency']],
+                          cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0]],
                          dff_signal, baseline_signal])
     return ret_list
 
@@ -254,11 +254,11 @@ def run_zscore_extraction(input_list):
             # Find the most common difference between time points
             # This is more robust than the mean since sessions can contain gaps in time due to artifact removal
             sampling_frequency = 1 / mode(np.diff(processed_signal['Time']))[0]
+            if sampling_frequency == 0:
+                print('Something weird with' + recording_path + 'sampling frequency estimation. Check key file.', end='', flush=True)
+                continue
         else:
             sampling_frequency = SETTINGS_DICT['SAMPLING_RATE']
-
-        # This placeholder will be modified if downsampling is desired
-        downsample_q = 1
 
         for trial_type in trial_types:
             if paradigm_type == '1IFC':
@@ -331,9 +331,15 @@ def run_zscore_extraction(input_list):
     toc(t0)
 
     # Update sampling frequency to match the downsampled frequency
-    if downsample_fs is not None:
+    if downsample_fs is not None and sampling_frequency > downsample_fs:
         downsample_q = int(sampling_frequency // downsample_fs)
-        sampling_frequency /= downsample_q
+        try:
+            sampling_frequency /= downsample_q
+        except ZeroDivisionError:
+            print('Something weird with sampling frequency estimation. Check key files', end='',
+                  flush=True)
+            return
+
 
     # Uniformize lengths and exclude truncated signals by more than half sampling rate points
     # The median length should be the target

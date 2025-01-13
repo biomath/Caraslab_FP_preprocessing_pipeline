@@ -45,7 +45,7 @@ def plot_FP_trial_zscore_summary(trial_type_dict, align_to_response, subj_date,
             # Map to color
             if trial_type == 'Hit':
                 cur_color = all_hit_color
-            if trial_type == 'Hit (all)':
+            elif trial_type == 'Hit (all)':
                 cur_color = all_hit_color
             elif trial_type == 'Hit (shock)':
                 cur_color = hitShock_color
