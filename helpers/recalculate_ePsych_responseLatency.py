@@ -36,11 +36,20 @@ def recalculate_ePsych_responseLatency(input_list):
         if 'Passive' in recording_path:
             continue
 
-        subj_date, info_key_times, spout_key_times, trial_types = preprocess_files(recording_path, SETTINGS_DICT)
+        subj_date, info_key_times, spout_key_times, trial_types, _ = preprocess_files(recording_path, SETTINGS_DICT)
 
-        spout_offsets = spout_key_times['Spout_offset'].values
+        if info_key_times is None:
+            print('Something weird with: ' + recording_path + '. Could not gather trial info \n\n')
+            continue
+
+        try:
+            spout_offsets = spout_key_times['Spout_offset'].values
+        except TypeError:
+            print('Something weird with: ' + recording_path + '. Could not gather spout offset times\n\n')
+            continue
 
         new_latencies = np.zeros(len(info_key_times))
+
         for row_idx, row_slice in info_key_times.iterrows():
             if (row_slice['Hit'] == 1) | (row_slice['FA'] == 1):
                 cur_onset = row_slice['Trial_onset']
@@ -48,7 +57,7 @@ def recalculate_ePsych_responseLatency(input_list):
                 cur_spout_offsets = spout_offsets[(spout_offsets >= cur_onset) & (spout_offsets < cur_offset)]
                 if len(cur_spout_offsets) == 0:  # Sometimes this is not registered properly in RZ6
                     print('Spout offset not registered properly in: ' + recording_path +
-                          '\nTrialID: ' + str(row_slice['TrialID']))
+                          '\nTrialID: ' + str(row_slice['TrialID']) + '\n\n')
                     new_latencies[row_idx] = np.nan
                 else:
                     last_offset = cur_spout_offsets[-1]  # Last offset probably triggered the outcome
@@ -61,7 +70,7 @@ def recalculate_ePsych_responseLatency(input_list):
                                                   (spout_offsets < (cur_offset + shock_start_end[1]))]
                 if len(cur_spout_offsets) == 0:  # Sometimes this is not registered properly in RZ6
                     print('Spout offset not registered properly in: ' + recording_path +
-                          '\nTrialID: ' + str(row_slice['TrialID']))
+                          '\nTrialID: ' + str(row_slice['TrialID']) + '\n\n')
                     new_latencies[row_idx] = np.nan
                 else:
                     last_offset = cur_spout_offsets[0]  # Let's get the first offset during shock period
@@ -70,7 +79,7 @@ def recalculate_ePsych_responseLatency(input_list):
                 new_latencies[row_idx] = np.nan
 
         # Replace dummy latencies
-        info_key_times['RespLatency'] = new_latencies * 1000  # Convert to msec to match new RPvds output
+        info_key_times['RespLatency'] = new_latencies
 
         # Save new file
-        info_key_times.to_csv(save_dir + sep + split(REGEX_SEP, recording_path)[-1])
+        info_key_times.to_csv(save_dir + sep + split(REGEX_SEP, recording_path)[-1][:-8] + '_trialInfo.csv')
