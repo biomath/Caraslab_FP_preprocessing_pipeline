@@ -65,18 +65,21 @@ def plot_FP_trial_zscore_summary(trial_type_dict, align_to_response, subj_date,
                 cur_color = passive_color
 
             all_trial_info = trial_type_dict[trial_type]['info']
-            sigs = np.zeros((len(trial_type_dict[trial_type]['zscore']), int(min_length)))
+            sigs = []
             for i, trial_info in enumerate(all_trial_info):
 
                 ts = trial_type_dict[trial_type]['zscore'][i]
 
                 if ams_to_analyze is not None:
                     if trial_info[1] in ams_to_analyze:
-                        sigs[i, 0:len(ts)] = ts
+                        sigs.append(ts)
                     else:
                         continue
                 else:
-                    sigs[i, 0:len(ts)] = ts
+                    sigs.append(ts)
+
+            plot_sigs = np.array(sigs)
+
             if np.size(sigs) == 0:
                 continue
 
@@ -85,7 +88,7 @@ def plot_FP_trial_zscore_summary(trial_type_dict, align_to_response, subj_date,
             else:
                 linestyle = '-'
 
-            plot_sigs = sigs
+
 
             signals_mean = np.nanmean(plot_sigs, axis=0)
             signals_sem = np.nanstd(plot_sigs, axis=0, ddof=1) / np.sqrt(
@@ -202,19 +205,19 @@ def plot_FP_trial_zscore_byAMdepth(trial_type_dict, align_to_response, subj_date
 
                     cur_color = colormaps.get_cmap('plasma')(int(cmap_factor * 255))
 
-                    sigs = np.zeros((len(trial_type_dict[trial_type]['zscore']), int(min_length)))
+                    sigs = []
                     all_trial_info = trial_type_dict[trial_type]['info']
                     for i, trial_info in enumerate(all_trial_info):
                         ts = trial_type_dict[trial_type]['zscore'][i]
                         if trial_info[1] == amdepth:
-                            sigs[i, 0:len(ts)] = ts
+                            sigs.append(ts)
                         else:
                             continue
 
-                    if np.size(sigs) == 0 or np.sum(sigs) == 0:
-                        continue
+                    plot_sigs = np.array(sigs)
 
-                    plot_sigs = sigs
+                    if np.size(plot_sigs) == 0 or np.sum(plot_sigs) == 0:
+                        continue
 
                     signals_mean = np.nanmean(plot_sigs, axis=0)
                     signals_sem = np.nanstd(plot_sigs, axis=0, ddof=1) / np.sqrt(

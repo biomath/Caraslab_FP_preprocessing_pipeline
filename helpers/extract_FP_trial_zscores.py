@@ -372,7 +372,7 @@ def run_zscore_extraction(input_list):
         return
 
     # Now uniformize lengths
-    min_length = np.median(sig_lengths)
+    min_length = np.min(sig_lengths)
     for trial_type_key in trial_type_dict.keys():
         trial_type_dict[trial_type_key]['dff_signal'] = [np.array(x[0:int(min_length)]) for
                                                          x in trial_type_dict[trial_type_key]['dff_signal']]
