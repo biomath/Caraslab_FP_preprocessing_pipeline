@@ -13,8 +13,9 @@ from helpers.write_json import write_json
 
 def plot_FP_trial_zscore_summary(trial_type_dict, align_to_response, subj_date,
                                  output_plots_path, target_sound_onset, target_sound_offset,
-                                 paradigm_type, response_latency_filter, response_window_duration,
-                                 min_length, ams_to_analyze, baseline_start_for_zscore, _precision_decimals,
+                                 paradigm_type, response_latency_filter,
+                                 signal_start, signal_end,
+                                 ams_to_analyze, _precision_decimals,
                                  all_hit_color, hitShock_color, hitNoShock_color, miss_color, missShock_color,
                                  missNoShock_color, fa_color, reject_color, passive_color):
     if align_to_response:
@@ -37,7 +38,7 @@ def plot_FP_trial_zscore_summary(trial_type_dict, align_to_response, subj_date,
                        facecolor='black', alpha=0.25)
 
             if paradigm_type == '1IFC':
-                ax.axvspan(response_latency_filter, response_window_duration,
+                ax.axvspan(response_latency_filter, signal_end,
                            ymin=0.025, ymax=0.05, facecolor='g', alpha=0.25)
 
         legend_handles = list()
@@ -93,7 +94,7 @@ def plot_FP_trial_zscore_summary(trial_type_dict, align_to_response, subj_date,
             signals_mean = np.nanmean(plot_sigs, axis=0)
             signals_sem = np.nanstd(plot_sigs, axis=0, ddof=1) / np.sqrt(
                 np.count_nonzero(~np.isnan(plot_sigs), axis=0))
-            x_axis = np.linspace(-baseline_start_for_zscore, response_window_duration, len(signals_mean))
+            x_axis = np.linspace(signal_start, signal_end, len(signals_mean))
             ax.plot(x_axis, signals_mean, color=cur_color, linestyle=linestyle)
             ax.fill_between(x_axis, signals_mean - signals_sem, signals_mean + signals_sem,
                             alpha=0.1, color=cur_color, edgecolor='none')
@@ -138,8 +139,8 @@ def plot_FP_trial_zscore_summary(trial_type_dict, align_to_response, subj_date,
 
 def plot_FP_trial_zscore_byAMdepth(trial_type_dict, align_to_response, subj_date,
                                    output_plots_path, target_sound_onset, target_sound_offset,
-                                   paradigm_type, response_latency_filter, response_window_duration,
-                                   min_length, ams_to_analyze, baseline_start_for_zscore, _precision_decimals):
+                                   paradigm_type, response_latency_filter, signal_start, signal_end,
+                                   ams_to_analyze, _precision_decimals):
     if align_to_response:
         file_name = subj_date + '_responseAligned_byAMdepth'
         x_label = "Time from response (s)"
@@ -181,7 +182,7 @@ def plot_FP_trial_zscore_byAMdepth(trial_type_dict, align_to_response, subj_date
                            facecolor='black', alpha=0.25)
 
                 if paradigm_type == '1IFC':
-                    ax.axvspan(response_latency_filter, response_window_duration,
+                    ax.axvspan(response_latency_filter, signal_end,
                                ymin=0.025, ymax=0.05, facecolor='g', alpha=0.25)
 
             # will just be each trial type for aversive
@@ -222,7 +223,7 @@ def plot_FP_trial_zscore_byAMdepth(trial_type_dict, align_to_response, subj_date
                     signals_mean = np.nanmean(plot_sigs, axis=0)
                     signals_sem = np.nanstd(plot_sigs, axis=0, ddof=1) / np.sqrt(
                         np.count_nonzero(~np.isnan(plot_sigs), axis=0))
-                    x_axis = np.linspace(-baseline_start_for_zscore, response_window_duration,
+                    x_axis = np.linspace(signal_start, signal_end,
                                          len(signals_mean))
                     ax.plot(x_axis, signals_mean, color=cur_color, linestyle=linestyle, alpha=1)
                     ax.fill_between(x_axis, signals_mean - signals_sem, signals_mean + signals_sem,
@@ -283,22 +284,21 @@ def plot_FP_trial_zscore_byAMdepth(trial_type_dict, align_to_response, subj_date
                                               _precision_decimals)])
 
 
-def __calculate_PeakValue_and_AUC(sigs, trial_info, baseline_window_start_time,
-                                  sampling_frequency, x_axis,
-                                  auc_start=0, auc_end=4):
+def __calculate_PeakValue_and_AUC(sigs, trial_info,
+                                  baseline_start, baseline_end,
+                                  auc_start, auc_end,
+                                  sampling_frequency, x_axis):
     auc_response = np.zeros(np.shape(sigs)[0])
     peak = np.zeros(np.shape(sigs)[0])
     auc_baseline = np.zeros(np.shape(sigs)[0])
     for trial_idx, cur_trial in enumerate(trial_info):
-        bounded_response_xaxis = x_axis[int((auc_start + baseline_window_start_time) * sampling_frequency):
-                                        int((auc_end + baseline_window_start_time) * sampling_frequency)]
+        bounded_response_idx_mask = (x_axis >= auc_start) & (x_axis < auc_end)
+        bounded_response_xaxis = x_axis[bounded_response_idx_mask]
+        bounded_response = sigs[trial_idx, bounded_response_idx_mask]
 
-        bounded_response = sigs[trial_idx, int((auc_start + baseline_window_start_time) * sampling_frequency):
-                                           int((auc_end + baseline_window_start_time) * sampling_frequency)]
-
-        # 0-index is already baseline_start_time
-        bounded_baseline_xaxis = x_axis[0:int(baseline_window_start_time * sampling_frequency)]
-        bounded_baseline = sigs[trial_idx, 0:int(baseline_window_start_time * sampling_frequency)]
+        baseline_idx_mask = (x_axis >= baseline_start) & (x_axis < baseline_end)
+        bounded_baseline_xaxis = x_axis[baseline_idx_mask]
+        bounded_baseline = sigs[trial_idx, baseline_idx_mask]
 
         auc_response[trial_idx] = simpson(bounded_response, x=bounded_response_xaxis)
 
@@ -316,9 +316,12 @@ def __calculate_PeakValue_and_AUC(sigs, trial_info, baseline_window_start_time,
 
 
 def measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or_r_align, subj_date,
-                             output_plots_path, response_window_duration,
-                             min_length, ams_to_analyze, baseline_start_for_zscore, _precision_decimals,
-                             sampling_frequency, auc_start, auc_end, output_path, output_sessionData_json):
+                             output_plots_path,
+                             baseline_start, baseline_end,
+                             signal_start, signal_end,
+                             auc_start, auc_end,
+                             min_length, ams_to_analyze, _precision_decimals,
+                             sampling_frequency, output_path, output_sessionData_json):
     if t_or_r_align == 'response_aligned':
         file_name = subj_date + '_responseAligned_trialByTrial'
     else:
@@ -347,18 +350,20 @@ def measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or
 
         # Measure and add measurements to list
         trial_info = trial_type_dict[trial_type]['info']
-        x_axis = np.linspace(-baseline_start_for_zscore, response_window_duration,
+        x_axis = np.linspace(signal_start, signal_end,
                              np.shape(zscore_sigs)[1])  # just in case
 
         # Get the dff signal measurements
         auc_response_dff, peak_dff, auc_baseline_dff = __calculate_PeakValue_and_AUC(
-            dff_sigs, trial_info, baseline_window_start_time=baseline_start_for_zscore,
-            sampling_frequency=sampling_frequency, x_axis=x_axis, auc_start=auc_start, auc_end=auc_end)
+            dff_sigs, trial_info, baseline_start=baseline_start, baseline_end=baseline_end,
+            auc_start=auc_start, auc_end=auc_end,
+            sampling_frequency=sampling_frequency, x_axis=x_axis)
 
         # Get the z-scored signal measurements
         auc_response_zscore, peak_zscore, auc_baseline_zscore = __calculate_PeakValue_and_AUC(
-            zscore_sigs, trial_info, baseline_window_start_time=baseline_start_for_zscore,
-            sampling_frequency=sampling_frequency, x_axis=x_axis, auc_start=auc_start, auc_end=auc_end)
+            zscore_sigs, trial_info, baseline_start=baseline_start, baseline_end=baseline_end,
+            auc_start=auc_start, auc_end=auc_end,
+            sampling_frequency=sampling_frequency, x_axis=x_axis)
 
         output_dict.update({trial_type: (trial_info,
                                          auc_response_dff,

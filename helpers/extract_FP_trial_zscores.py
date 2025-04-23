@@ -41,8 +41,10 @@ class NumpyEncoder(json.JSONEncoder):
 
 
 def __get_trialID_dff_signal(processed_signal, key_times_df,
-                             baseline_start_for_zscore=0., baseline_end_for_zscore=1.,
-                             response_window_duration=4.,
+                             signal_start_for_zscore=-2.,
+                             signal_end_for_zscore=4.,
+                             baseline_start_for_zscore=0.,
+                             baseline_end_for_zscore=1.,
                              response_latency_filter=False,
                              align_to_response=False,
                              subtract_405=True,
@@ -73,8 +75,8 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
         else:
             response_time = 0
 
-        _signal_start = (cur_trial['trial_onset'] - baseline_start_for_zscore + response_time)
-        _signal_end = (cur_trial['trial_onset'] + response_window_duration + response_time)
+        _signal_start = (cur_trial['trial_onset'] + signal_start_for_zscore + response_time)
+        _signal_end = (cur_trial['trial_onset'] + signal_end_for_zscore + response_time)
         signal_around_trial = processed_signal[
             (processed_signal['Time'] > _signal_start) &
             (processed_signal['Time'] <= _signal_end)]
@@ -88,8 +90,8 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
         # z-score it
 
         # Use baseline just before response
-        _baseline_start = (cur_trial['trial_onset'] - baseline_start_for_zscore + response_time)
-        _baseline_end = (cur_trial['trial_onset'] - baseline_end_for_zscore + response_time)
+        _baseline_start = (cur_trial['trial_onset'] + baseline_start_for_zscore + response_time)
+        _baseline_end = (cur_trial['trial_onset'] + baseline_end_for_zscore + response_time)
         baseline_signal = processed_signal[
             (processed_signal['Time'] > _baseline_start) &
             (processed_signal['Time'] <= _baseline_end)][
@@ -97,7 +99,7 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
 
         # Use baseline before sound onset (even when aligned by response time)
         # baseline_signal = processed_signal[
-        #     (processed_signal['Time'] > (cur_trial['trial_onset'] - baseline_start_for_zscore)) &
+        #     (processed_signal['Time'] > (cur_trial['trial_onset'] - baseline_start)) &
         #     (processed_signal['Time'] <= (cur_trial['trial_onset'] - baseline_end_for_zscore))][
         #     sig_column]
 
@@ -170,15 +172,13 @@ def run_zscore_extraction(input_list):
     (session_date_paths, SETTINGS_DICT) = input_list
 
     # Load globals
-    baseline_start_for_zscore = SETTINGS_DICT['BASELINE_START_FOR_ZSCORE']
-    baseline_end_for_zscore = SETTINGS_DICT['BASELINE_END_FOR_ZSCORE']
-    response_window_duration = SETTINGS_DICT['RESPONSE_WINDOW_DURATION']
-    subtract_405 = SETTINGS_DICT['SUBTRACT_405']
-    auc_start = SETTINGS_DICT['AUC_WINDOW_START']
-    auc_end = SETTINGS_DICT['AUC_WINDOW_END']
+    signal_start_end = SETTINGS_DICT['SIGNAL_START_END']
+    baseline_start_end = SETTINGS_DICT['BASELINE_START_END']
+    auc_start_end = SETTINGS_DICT['AUC_START_END']
 
-    target_sound_onset = SETTINGS_DICT['TARGET_SOUND_ONSET']
-    target_sound_offset = SETTINGS_DICT['TARGET_SOUND_OFFSET']
+    subtract_405 = SETTINGS_DICT['SUBTRACT_405']
+
+    target_onset_offset = SETTINGS_DICT['TARGET_ONSET_OFFSET']
 
     analysis_id = SETTINGS_DICT['ANALYSIS_ID']
 
@@ -315,9 +315,10 @@ def run_zscore_extraction(input_list):
                 return
 
             cur_signals = __get_trialID_dff_signal(processed_signal, cur_key_times,
-                                                   baseline_start_for_zscore=baseline_start_for_zscore,
-                                                   baseline_end_for_zscore=baseline_end_for_zscore,
-                                                   response_window_duration=response_window_duration,
+                                                   signal_start_for_zscore=signal_start_end[0],
+                                                   signal_end_for_zscore=signal_start_end[1],
+                                                   baseline_start_for_zscore=baseline_start_end[0],
+                                                   baseline_end_for_zscore=baseline_start_end[1],
                                                    response_latency_filter=response_latency_filter,
                                                    align_to_response=align_to_response,
                                                    subtract_405=subtract_405,
@@ -390,9 +391,10 @@ def run_zscore_extraction(input_list):
         print('Plotting summary trial z-scores... ', end='', flush=True)
         t0 = tic()
         plot_FP_trial_zscore_summary(trial_type_dict, align_to_response, subj_date,
-                                     output_plots_path, target_sound_onset, target_sound_offset,
-                                     paradigm_type, response_latency_filter, response_window_duration,
-                                     min_length, ams_to_analyze, baseline_start_for_zscore, _precision_decimals,
+                                     output_plots_path, target_onset_offset[0], target_onset_offset[1],
+                                     paradigm_type, response_latency_filter,
+                                     signal_start_end[0], signal_start_end[1],
+                                     ams_to_analyze, _precision_decimals,
                                      all_hit_color, hitShock_color, hitNoShock_color, miss_color, missShock_color,
                                      missNoShock_color, fa_color, reject_color, passive_color)
         toc(t0)
@@ -402,9 +404,9 @@ def run_zscore_extraction(input_list):
         print('Plotting z-scores by AM depth... ', end='', flush=True)
         t0 = tic()
         plot_FP_trial_zscore_byAMdepth(trial_type_dict, align_to_response, subj_date,
-                                       output_plots_path, target_sound_onset, target_sound_offset,
-                                       paradigm_type, response_latency_filter, response_window_duration,
-                                       min_length, ams_to_analyze, baseline_start_for_zscore, _precision_decimals)
+                                       output_plots_path, target_onset_offset[0], target_onset_offset[1],
+                                       paradigm_type, response_latency_filter, signal_start_end[0], signal_start_end[1],
+                                       ams_to_analyze, _precision_decimals)
         toc(t0)
 
     if SETTINGS_DICT['PIPELINE_SWITCHBOARD']['extract_trial_zscores']:
@@ -412,9 +414,10 @@ def run_zscore_extraction(input_list):
         t0 = tic()
         output_sessionData_json = SETTINGS_DICT['PIPELINE_SWITCHBOARD']['output_sessionData_json']
         measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or_r_align, subj_date,
-                                 output_plots_path, response_window_duration,
-                                 min_length, ams_to_analyze, baseline_start_for_zscore, _precision_decimals,
-                                 sampling_frequency, auc_start, auc_end,
-                                 output_path,
-                                 output_sessionData_json)
+                                 output_plots_path,
+                                 baseline_start_end[0], baseline_start_end[1],
+                                 signal_start_end[0], signal_start_end[1],
+                                 auc_start_end[0], auc_start_end[1],
+                                 min_length, ams_to_analyze, _precision_decimals,
+                                 sampling_frequency, output_path, output_sessionData_json)
         toc(t0)

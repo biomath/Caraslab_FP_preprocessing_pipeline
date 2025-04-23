@@ -36,7 +36,7 @@ def recalculate_ePsych_responseLatency(input_list):
         if 'Passive' in recording_path:
             continue
 
-        subj_date, info_key_times, spout_key_times, trial_types, _ = preprocess_files(recording_path, SETTINGS_DICT)
+        subj_date, info_key_times, spout_key_times, _, _ = preprocess_files(recording_path, SETTINGS_DICT)
 
         if info_key_times is None:
             print('Something weird with: ' + recording_path + '. Could not gather trial info \n\n')
@@ -62,18 +62,24 @@ def recalculate_ePsych_responseLatency(input_list):
                 else:
                     last_offset = cur_spout_offsets[-1]  # Last offset probably triggered the outcome
                     new_latencies[row_idx] = last_offset - cur_onset
-            elif (row_slice['Miss'] == 1) & (row_slice['ShockFlag'] == 1):
-                # If miss+shock trial get the offset during the shock
+            elif row_slice['Miss'] == 1:
+                # If miss trial:
+                # 1. Look for spout offsets during the trial. These trials can be handled separately since the animal
+                #   might have detected the AM sound but failed to stay off spout for some reason
+                # 2. If no spout offsets during the trial were found, look for offsets during the shock period. If
+                #   none are found, return NaN
                 cur_onset = row_slice['Trial_onset']
                 cur_offset = row_slice['Trial_offset']
-                cur_spout_offsets = spout_offsets[(spout_offsets >= (cur_onset + shock_start_end[0])) &
-                                                  (spout_offsets < (cur_offset + shock_start_end[1]))]
-                if len(cur_spout_offsets) == 0:  # Sometimes this is not registered properly in RZ6
-                    print('Spout offset not registered properly in: ' + recording_path +
-                          '\nTrialID: ' + str(row_slice['TrialID']) + '\n\n')
+
+                cur_spout_offsets = spout_offsets[(spout_offsets >= cur_onset) & (spout_offsets < cur_offset)]
+                if len(cur_spout_offsets) == 0:
+                    cur_spout_offsets = spout_offsets[(spout_offsets >= (cur_onset + shock_start_end[0])) &
+                                                      (spout_offsets < (cur_offset + shock_start_end[1]))]
+
+                if len(cur_spout_offsets) == 0:  # Either animal did not withdraw with shock or this was a non-shocked miss
                     new_latencies[row_idx] = np.nan
                 else:
-                    last_offset = cur_spout_offsets[0]  # Let's get the first offset during shock period
+                    last_offset = cur_spout_offsets[-1]  # Get the last offset
                     new_latencies[row_idx] = last_offset - cur_onset
             else:
                 new_latencies[row_idx] = np.nan
