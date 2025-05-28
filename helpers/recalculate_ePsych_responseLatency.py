@@ -88,4 +88,4 @@ def recalculate_ePsych_responseLatency(input_list):
         info_key_times['RespLatency'] = new_latencies
 
         # Save new file
-        info_key_times.to_csv(save_dir + sep + split(REGEX_SEP, recording_path)[-1][:-8] + '_trialInfo.csv')
+        info_key_times.to_csv(save_dir + sep + split(REGEX_SEP, recording_path)[-1], index=False)

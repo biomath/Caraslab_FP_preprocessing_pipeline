@@ -47,6 +47,7 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
                              baseline_end_for_zscore=1.,
                              response_latency_filter=False,
                              align_to_response=False,
+                             use_nonAM_baseline=False,
                              subtract_405=True,
                              ms_latency_values=False,
                              sampling_frequency=None,
@@ -88,22 +89,21 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
             sig_column = 'Ch465_mV'
 
         # z-score it
+        if use_nonAM_baseline:
+            # Use baseline before sound onset (even when aligned by response time)
+            _baseline_start = (cur_trial['trial_onset'] + baseline_start_for_zscore)
+            _baseline_end = (cur_trial['trial_onset'] + baseline_end_for_zscore)
+        else:
+            # Use baseline just before response
+            _baseline_start = (cur_trial['trial_onset'] + baseline_start_for_zscore + response_time)
+            _baseline_end = (cur_trial['trial_onset'] + baseline_end_for_zscore + response_time)
 
-        # Use baseline just before response
-        _baseline_start = (cur_trial['trial_onset'] + baseline_start_for_zscore + response_time)
-        _baseline_end = (cur_trial['trial_onset'] + baseline_end_for_zscore + response_time)
         baseline_signal = processed_signal[
             (processed_signal['Time'] > _baseline_start) &
             (processed_signal['Time'] <= _baseline_end)][
             sig_column].values
 
-        # Use baseline before sound onset (even when aligned by response time)
-        # baseline_signal = processed_signal[
-        #     (processed_signal['Time'] > (cur_trial['trial_onset'] - baseline_start)) &
-        #     (processed_signal['Time'] <= (cur_trial['trial_onset'] - baseline_end_for_zscore))][
-        #     sig_column]
-
-        # # Truncate signal at response
+# # Truncate signal at response
         # if truncate_at_responseTime:
         #     response_time = cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] / 1000
         #     signal_around_trial[signal_around_trial['Time'] >= (cur_trial['trial_onset'] + response_time)] = np.NaN
@@ -191,6 +191,7 @@ def run_zscore_extraction(input_list):
 
     ms_latency_values = SETTINGS_DICT['MS_LATENCY_VALUES']
 
+    use_nonAM_baseline = SETTINGS_DICT['USE_NONAM_BASELINE']
     # For data compactness when saving csvs and json files
     _precision_decimals = 3
 
@@ -321,6 +322,7 @@ def run_zscore_extraction(input_list):
                                                    baseline_end_for_zscore=baseline_start_end[1],
                                                    response_latency_filter=response_latency_filter,
                                                    align_to_response=align_to_response,
+                                                   use_nonAM_baseline=use_nonAM_baseline,
                                                    subtract_405=subtract_405,
                                                    ms_latency_values=ms_latency_values,
                                                    sampling_frequency=sampling_frequency,
