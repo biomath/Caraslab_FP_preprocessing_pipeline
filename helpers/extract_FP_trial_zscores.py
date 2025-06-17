@@ -262,6 +262,7 @@ def run_zscore_extraction(input_list):
             sampling_frequency = SETTINGS_DICT['SAMPLING_RATE']
 
         for trial_type in trial_types:
+            cur_trial_align_to_response = align_to_response  # Will be changed temporarily for passive sessions
             if paradigm_type == '1IFC':
                 if trial_type == 'Hit':
                     cur_key_times = info_key_times[(info_key_times['Hit'] == 1)]
@@ -272,6 +273,9 @@ def run_zscore_extraction(input_list):
                 elif trial_type == 'False alarm':
                     cur_key_times = info_key_times[(info_key_times['FA'] == 1)]
                 else:  # Passive
+                    # Sometimes responses can be recorded in passive sessions if the spout override is interrupted during a trial
+                    # Ensure trial onset is used always by turning this flag off
+                    cur_trial_align_to_response = False
                     cur_key_times = info_key_times[(info_key_times['TrialType'] == 0)]
                     # Keep track of trial number and onset time too
             elif paradigm_type == 'AversiveAM':
@@ -311,6 +315,9 @@ def run_zscore_extraction(input_list):
                 else:  # Passive
                     cur_key_times = info_key_times[(info_key_times['TrialType'] == 0)]
                     response_latency_filter = 0
+                    # Sometimes responses can be recorded in passive sessions if the spout override is interrupted during a trial
+                    # Ensure trial onset is used always by turning this flag off
+                    cur_trial_align_to_response = False
             else:
                 print('Experiment type not recognized. Exiting.', flush=True)
                 return
@@ -321,7 +328,7 @@ def run_zscore_extraction(input_list):
                                                    baseline_start_for_zscore=baseline_start_end[0],
                                                    baseline_end_for_zscore=baseline_start_end[1],
                                                    response_latency_filter=response_latency_filter,
-                                                   align_to_response=align_to_response,
+                                                   align_to_response=cur_trial_align_to_response,
                                                    use_nonAM_baseline=use_nonAM_baseline,
                                                    subtract_405=subtract_405,
                                                    ms_latency_values=ms_latency_values,
