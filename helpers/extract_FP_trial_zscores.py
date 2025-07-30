@@ -430,3 +430,232 @@ def run_zscore_extraction(input_list):
                                  min_length, ams_to_analyze, _precision_decimals,
                                  sampling_frequency, output_path, output_sessionData_json)
         toc(t0)
+
+
+def run_zscore_extraction_pumpTriggered_spoutOff(input_list):
+    (session_date_paths, SETTINGS_DICT) = input_list
+
+    # Load globals
+    signal_start_end = SETTINGS_DICT['SIGNAL_START_END']
+    baseline_start_end = SETTINGS_DICT['BASELINE_START_END']
+    auc_start_end = SETTINGS_DICT['AUC_START_END']
+
+    subtract_405 = SETTINGS_DICT['SUBTRACT_405']
+
+    analysis_id = SETTINGS_DICT['ANALYSIS_ID']
+
+    output_path = SETTINGS_DICT['OUTPUT_PATH']
+
+    output_plots_path = SETTINGS_DICT['OUTPUT_PLOTS_PATH']
+
+    downsample_fs = SETTINGS_DICT['DOWNSAMPLE_RATE']
+
+    # For data compactness when saving csvs and json files
+    _precision_decimals = 3
+
+    # Plot colors and some parameters
+    cur_color = 'black'
+
+    trial_type_dict = dict()
+    sampling_frequency = 0
+    subj_date = ''
+    print('Loading and z-scoring signals... ', end='', flush=True)
+    t0 = tic()
+
+    if len(session_date_paths) == 0:
+        raise UserWarning('No key files were found. Please check your paths.')
+
+    for recording_path in session_date_paths:
+        subj_date, info_key_times, spout_key_times, trial_types, cur_sessionData = preprocess_files(recording_path, SETTINGS_DICT)
+        if info_key_times is None or spout_key_times is None:  # If preprocessing can't find files, skip
+            continue
+
+        # Determine experiment type
+        if not ('Aversive' in recording_path or 'Passive' in recording_path
+              or 'AversiveAM' in SETTINGS_DICT['EXPERIMENT_TYPE']):
+            print('This function is only relevant for Aversive AM task. Aborting...', end='', flush=True)
+            return
+
+        # Load signal
+        processed_signal = pd.read_csv(recording_path)
+
+        # If not set, approximate sampling rate
+        if SETTINGS_DICT['SAMPLING_RATE'] is None:
+            # Find the most common difference between time points
+            # This is more robust than the mean since sessions can contain gaps in time due to artifact removal
+            sampling_frequency = 1 / mode(np.diff(processed_signal['Time']))[0]
+            if sampling_frequency == 0:
+                print('Something weird with' + recording_path + 'sampling frequency estimation. Check key file.',
+                      end='', flush=True)
+                continue
+        else:
+            sampling_frequency = SETTINGS_DICT['SAMPLING_RATE']
+
+        # Find first spout offset during a pump 0-flow window
+        pump_rate_values = info_key_times['PumpRate'].values
+        ## Find switches to 0 flow first
+        zero_rate_onset_offset = []
+        trial_idx = 0
+        while trial_idx < len(pump_rate_values) - 1:
+            pump_rate = pump_rate_values[trial_idx]
+            if pump_rate == 0:
+                # Zero flow block started
+                start_onset = info_key_times[trial_idx, 'Trial_onset'].values
+                next_trial_idx = trial_idx + 1
+                while next_trial_idx < len(pump_rate_values):
+                    next_pump_rate = pump_rate_values[next_trial_idx]
+                    if next_trial_idx == (len(pump_rate_values) - 1):  # Last trial was 0-flow
+                        end_offset = info_key_times[next_trial_idx, 'Trial_offset'].values
+                        zero_rate_onset_offset.append((start_onset, end_offset))
+                        break
+                    elif next_pump_rate == 0:  # Next trial is still 0-flow
+                        next_trial_idx += 1
+                        continue
+                    else:  # 0-flow block ended
+                        end_offset = info_key_times[next_trial_idx-1, 'Trial_offset'].values
+                        zero_rate_onset_offset.append((start_onset, end_offset))
+                        trial_idx = next_trial_idx
+                        break
+            else:
+                trial_idx += 1
+                continue
+
+        ## Grab spout offset triggered signals within windows
+        cur_signals = []
+        trial_id = []  # Assign an ID to each event
+        spout_offsets = spout_key_times['Spout_offset'].values
+        signal_start_for_zscore = signal_start_end[0]
+        signal_end_for_zscore = signal_start_end[1]
+        baseline_start_for_zscore = baseline_start_end[0]
+        baseline_end_for_zscore = baseline_start_end[1]
+        for trial_idx, onset_offset in enumerate(zero_rate_onset_offset):
+            relevant_spoutOffset_mask = (spout_offsets > onset_offset[0]) & (spout_offsets < onset_offset[1])
+            relevant_spoutOffset = spout_offsets[relevant_spoutOffset_mask][0]  # Grab the first one
+            if len(relevant_spoutOffset) == 0:  # No spout offsets were found in window (unlikely)
+                continue
+            response_latency = relevant_spoutOffset - onset_offset[0]
+            _signal_start = (relevant_spoutOffset + signal_start_for_zscore)
+            _signal_end = (relevant_spoutOffset + signal_end_for_zscore)
+            signal_around_trial = processed_signal[
+                (processed_signal['Time'] > _signal_start) &
+                (processed_signal['Time'] <= _signal_end)]
+
+            # 405 fit-removed signal
+            if subtract_405:
+                sig_column = 'Ch465_dff'
+            else:
+                sig_column = 'Ch465_mV'
+
+            # z-score it
+            # Use baseline just before response
+            _baseline_start = (relevant_spoutOffset + baseline_start_for_zscore)
+            _baseline_end = (relevant_spoutOffset + baseline_end_for_zscore)
+
+            baseline_signal = processed_signal[
+                (processed_signal['Time'] > _baseline_start) &
+                (processed_signal['Time'] <= _baseline_end)][
+                sig_column].values
+
+            dff_signal = signal_around_trial[sig_column].values
+
+            if downsample_fs is not None:
+                downsample_q = int(sampling_frequency // downsample_fs)
+                try:
+                    dff_signal = decimate(dff_signal, downsample_q)
+                except ValueError:
+                    # If signals are too short this will fail. Remove signal
+                    continue
+
+                try:
+                    baseline_signal = decimate(baseline_signal, downsample_q)
+                except ValueError:
+                    # If signals are too short this will fail. Remove signal
+                    continue
+
+            cur_signals.append([
+                (trial_idx+1, onset_offset[0],onset_offset[1], response_latency), dff_signal, baseline_signal
+            ])
+
+        trial_type_dict.update({'Zero_flow': {'info': [x[0] for x in cur_signals],
+                                             'dff_signal': [x[1] for x in cur_signals],
+                                             'dff_baseline': [x[2] for x in cur_signals]}})
+    toc(t0)
+
+    # Update sampling frequency to match the downsampled frequency
+    if downsample_fs is not None and sampling_frequency > downsample_fs:
+        downsample_q = int(sampling_frequency // downsample_fs)
+        try:
+            sampling_frequency /= downsample_q
+        except ZeroDivisionError:
+            print('Something weird with sampling frequency estimation. Check key files', end='',
+                  flush=True)
+            return
+
+    # Uniformize lengths and exclude truncated signals by more than half sampling rate points
+    # The median length should be the target
+    tolerance = sampling_frequency / 2
+    sig_lengths = []
+    print('Uniformizing signal lengths for plotting... ', end='', flush=True)
+    t0 = tic()
+    for trial_type_key in trial_type_dict.keys():
+        sig_lengths.extend([len(x) for x in trial_type_dict[trial_type_key]['dff_signal']])
+    median_length = np.median(sig_lengths)
+
+    sig_lengths = []
+    for trial_type_key in trial_type_dict.keys():
+        good_indices: list[int] = [idx for
+                                   idx, x in enumerate(trial_type_dict[trial_type_key]['dff_signal']) if
+                                   (len(x) > (median_length - tolerance)) and
+                                   (len(x) < (median_length + 100))]
+
+        trial_type_dict[trial_type_key]['info'] = [trial_type_dict[trial_type_key]['info'][x] for x in good_indices]
+        trial_type_dict[trial_type_key]['dff_signal'] = [trial_type_dict[trial_type_key]['dff_signal'][x] for x in
+                                                         good_indices]
+        trial_type_dict[trial_type_key]['dff_baseline'] = [trial_type_dict[trial_type_key]['dff_baseline'][x] for x in
+                                                           good_indices]
+
+        sig_lengths.extend([len(x) for x in trial_type_dict[trial_type_key]['dff_signal']])
+
+    # Check if there are any signals present
+    if len(sig_lengths) == 0:
+        print('No signals found. Tip: did you set the response latency filter properly?', flush=True)
+        return
+
+    # Now uniformize lengths
+    min_length = np.min(sig_lengths)
+    for trial_type_key in trial_type_dict.keys():
+        trial_type_dict[trial_type_key]['dff_signal'] = [np.array(x[0:int(min_length)]) for
+                                                         x in trial_type_dict[trial_type_key]['dff_signal']]
+
+    toc(t0)
+
+    # Extract Z-score
+    trial_type_dict = __get_trialID_zscore(trial_type_dict)
+
+    # Select specific AMs
+    ams_to_analyze = None  # or None for all
+
+    ###### PLOTTING AND MEASUREMENTS START HERE ######
+    # Plot responses triggered by turning off the pump (0 mL/min flag)
+    if SETTINGS_DICT['PIPELINE_SWITCHBOARD']['plot_extinction_spoutOff_zscores']:
+        print('Plotting z-scores by AM depth... ', end='', flush=True)
+        t0 = tic()
+        plot_FP_extinction_spoutOff_zscores(trial_type_dict, subj_date,
+                                            output_plots_path, signal_start_end[0],
+                                            signal_start_end[1], _precision_decimals)
+        toc(t0)
+
+        if SETTINGS_DICT['PIPELINE_SWITCHBOARD']['extract_extinction_spoutOff_zscores']:
+            print('Extracting 0 mL/min-triggered spout offset  z-scores... ', end='', flush=True)
+            t0 = tic()
+            output_sessionData_json = SETTINGS_DICT['PIPELINE_SWITCHBOARD']['output_sessionData_json']
+            measure_extinction_spoutOffset_signals_and_save(
+                trial_type_dict, cur_sessionData, analysis_id, subj_date,
+                output_plots_path,
+                baseline_start_end[0], baseline_start_end[1],
+                signal_start_end[0], signal_start_end[1],
+                auc_start_end[0], auc_start_end[1],
+                min_length, _precision_decimals,
+                output_path, output_sessionData_json)
+
+            toc(t0)
