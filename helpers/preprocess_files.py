@@ -66,7 +66,7 @@ def preprocess_files(memory_path, settings_dict):
         key_path_spout = glob(keys_path + sep + subject_id + '*' +
                               cur_date + '*' + cur_timestamp + "*spoutTimestamps.csv")
         spout_key_times = read_csv(key_path_spout[0])
-        trial_types = ['Hit (all)', 'Hit (shock)', 'Hit (no shock)', 'Miss (shock)', 'Miss (no shock)', 'False alarm']
+        trial_types = ['Passive', ]  # For now, analyze the same as passive session
     elif '1IFC' in key_file_name:
         spout_key_times = None
         trial_types = ['Hit', 'Miss', 'Reject', 'False alarm']
