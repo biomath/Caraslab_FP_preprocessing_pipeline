@@ -223,7 +223,6 @@ def run_zscore_extraction(input_list):
     trial_type_dict = dict()
     sampling_frequency = 0
     subj_date = ''
-    print('Loading and z-scoring signals... ', end='', flush=True)
     t0 = tic()
 
     if len(session_date_paths) == 0:
@@ -231,7 +230,9 @@ def run_zscore_extraction(input_list):
 
     for recording_path in session_date_paths:
         subj_date, info_key_times, _, trial_types, cur_sessionData = preprocess_files(recording_path, SETTINGS_DICT)
+
         if info_key_times is None:  # If preprocessing can't find files, skip
+            print((recording_path + ': No info file was found\n'), end='', flush=True)
             continue
 
         # Reset this here, because passive files will change this to 0

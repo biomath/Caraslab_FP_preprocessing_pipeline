@@ -54,7 +54,7 @@ def preprocess_files(memory_path, settings_dict):
     info_key_times = read_csv(key_path_info[0])
     key_file_name = split(REGEX_SEP, key_path_info[0])[-1]
 
-    if 'Aversive' in key_file_name:
+    if 'Aversive' in key_file_name or 'Extinction' in key_file_name:
         key_path_spout = glob(keys_path + sep + subject_id + '*' +
                               cur_date + '*' + cur_timestamp + "*spoutTimestamps.csv")
         spout_key_times = read_csv(key_path_spout[0])
@@ -62,11 +62,6 @@ def preprocess_files(memory_path, settings_dict):
     elif 'Passive' in key_file_name:
         spout_key_times = None
         trial_types = ['Passive', ]
-    elif 'Extinction' in key_file_name:
-        key_path_spout = glob(keys_path + sep + subject_id + '*' +
-                              cur_date + '*' + cur_timestamp + "*spoutTimestamps.csv")
-        spout_key_times = read_csv(key_path_spout[0])
-        trial_types = ['Passive', ]  # For now, analyze the same as passive session
     elif '1IFC' in key_file_name:
         spout_key_times = None
         trial_types = ['Hit', 'Miss', 'Reject', 'False alarm']

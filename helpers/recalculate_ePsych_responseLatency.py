@@ -28,8 +28,11 @@ def recalculate_ePsych_responseLatency(input_list):
     shock_start_end = SETTINGS_DICT['SHOCK_START_END']
 
     output_path = SETTINGS_DICT['KEYS_PATH']
-    save_dir = output_path + sep + 'new_respLatencies'
-    makedirs(save_dir, exist_ok=True)
+    save_dir = output_path
+
+    # Uncomment below if you don't want to overwrite the original files
+    # save_dir = output_path + sep + 'new_respLatencies'
+    # makedirs(save_dir, exist_ok=True)
 
     for recording_path in session_date_paths:
         # Automatically skip passive files here for obvious reasons :)
