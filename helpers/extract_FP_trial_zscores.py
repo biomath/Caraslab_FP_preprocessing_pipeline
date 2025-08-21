@@ -196,7 +196,8 @@ def run_zscore_extraction(input_list):
     _precision_decimals = 3
 
     # Plot colors and some parameters
-    passive_color = 'black'
+    passivePre_color = 'black'
+    passivePost_color = 'darkgray'
     all_hit_color = '#0F52BA'
     hit_color = '#60B2E5'
     fa_color = '#F0A202'
@@ -239,10 +240,10 @@ def run_zscore_extraction(input_list):
         response_latency_filter = SETTINGS_DICT['RESPONSE_LATENCY_FILTER']
 
         # Determine experiment type
-        if '1IFC' in recording_path or '1IFC' in SETTINGS_DICT['EXPERIMENT_TYPE']:
+        if '1ifc' in recording_path.lower() or '1ifc' in SETTINGS_DICT['EXPERIMENT_TYPE'].lower():
             paradigm_type = '1IFC'
-        elif ('Aversive' in recording_path or 'Passive' in recording_path
-              or 'AversiveAM' in SETTINGS_DICT['EXPERIMENT_TYPE']):
+        elif ('aversive' in recording_path.lower() or 'passive' in recording_path.lower()
+              or 'aversiveam' in SETTINGS_DICT['EXPERIMENT_TYPE'].lower()):
             paradigm_type = 'AversiveAM'
         else:
             print('Behavioral experiment type not recognized... ', end='', flush=True)
@@ -406,7 +407,7 @@ def run_zscore_extraction(input_list):
                                      signal_start_end[0], signal_start_end[1],
                                      ams_to_analyze, _precision_decimals,
                                      all_hit_color, hitShock_color, hitNoShock_color, miss_color, missShock_color,
-                                     missNoShock_color, fa_color, reject_color, passive_color)
+                                     missNoShock_color, fa_color, reject_color, passivePre_color, passivePost_color)
         toc(t0)
 
     # Plot responses split by AM depth
@@ -632,9 +633,6 @@ def run_zscore_extraction_pumpTriggered_spoutOff(input_list):
 
     # Extract Z-score
     trial_type_dict = __get_trialID_zscore(trial_type_dict)
-
-    # Select specific AMs
-    ams_to_analyze = None  # or None for all
 
     ###### PLOTTING AND MEASUREMENTS START HERE ######
     # Plot responses triggered by turning off the pump (0 mL/min flag)
