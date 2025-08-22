@@ -24,11 +24,13 @@ def preprocess_files(memory_path, settings_dict):
     split_memory_path = split(REGEX_SEP, memory_path)  # split path
     recording_id = split_memory_path[-1][:-4]  # Example id: SUBJ-ID-104_FP-Aversive-AM-210707-110339_dff
 
-    split_timestamps_name = split("_*_", recording_id)[1].lower()  # split timestamps
-    if '1ifc' in split_timestamps_name or '1ifc' in settings_dict['EXPERIMENT_TYPE'].lower():
+    split_timestamps_name = split("_*_", recording_id)[1] # split timestamps
+    if '1ifc' in split_timestamps_name.lower()  or '1ifc' in settings_dict['EXPERIMENT_TYPE'].lower():
         cur_date = split("-*-", split_timestamps_name)[2]
         cur_timestamp = split("-*-", split_timestamps_name)[3]
-    elif 'aversive' in split_timestamps_name or 'passive' in split_timestamps_name or 'extinction' in split_timestamps_name:
+    elif ('aversive' in split_timestamps_name.lower()  or
+          'passive' in split_timestamps_name.lower()  or
+          'extinction' in split_timestamps_name.lower() ):
         try:
             cur_date = split("-*-", split_timestamps_name)[3]
             cur_timestamp = split("-*-", split_timestamps_name)[4]
@@ -52,22 +54,22 @@ def preprocess_files(memory_path, settings_dict):
 
     # Load key and spout files
     info_key_times = read_csv(key_path_info[0])
-    key_file_name = split(REGEX_SEP, key_path_info[0])[-1].lower()
+    key_file_name = split(REGEX_SEP, key_path_info[0])[-1]
 
-    if 'aversive' in key_file_name or 'extinction' in key_file_name:
+    if 'aversive' in key_file_name.lower() or 'extinction' in key_file_name.lower():
         key_path_spout = glob(keys_path + sep + subject_id + '*' +
                               cur_date + '*' + cur_timestamp + "*spoutTimestamps.csv")
         spout_key_times = read_csv(key_path_spout[0])
         trial_types = ['Hit (all)', 'Hit (shock)', 'Hit (no shock)', 'Miss (shock)', 'Miss (no shock)', 'False alarm']
-    elif 'passive' in key_file_name:
+    elif 'passive' in key_file_name.lower():
         spout_key_times = None
-        if 'pre' in key_file_name:
+        if 'pre' in key_file_name.lower():
             trial_types = ['Passive-Pre',]
-        elif 'post' in key_file_name:
+        elif 'post' in key_file_name.lower():
             trial_types = ['Passive-Post',]
         else:
             trial_types = ['Passive',]
-    elif '1ifc' in key_file_name:
+    elif '1ifc' in key_file_name.lower():
         spout_key_times = None
         trial_types = ['Hit', 'Miss', 'Reject', 'False alarm']
     else:
