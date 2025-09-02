@@ -73,6 +73,12 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
 
         if align_to_response:
             response_time = cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0]
+
+            # Treat Miss (no shock) as special cases here.
+            # For interesting comparison with response trials, align with the end of the AM if there is no latency value
+            #   (i.e., potential Miss (attempt))
+            if (np.isnan(response_time)) & (cur_trial['trialtype'] == 'Miss (no shock)'):
+                response_time = 1
         else:
             response_time = 0
 
@@ -524,7 +530,6 @@ def run_zscore_extraction_pumpTriggered_spoutOff(input_list):
 
         ## Grab spout offset triggered signals within windows
         cur_signals = []
-        trial_id = []  # Assign an ID to each event
         spout_offsets = spout_key_times['Spout_offset'].values
         signal_start_for_zscore = signal_start_end[0]
         signal_end_for_zscore = signal_start_end[1]

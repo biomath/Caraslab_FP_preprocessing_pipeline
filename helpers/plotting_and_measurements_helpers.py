@@ -685,3 +685,67 @@ def measure_extinction_spoutOffset_signals_and_save(
                                 [response_peak_zscore] +
                                 [baseline_auc_zscore]
                                 )
+
+def output_json_to_flmm_format(data_dict, output_path, analysis_id: list):
+    recording_list = list()
+    analysisID_list = list()
+    t_or_r_align_list = list()
+    trialType_list = list()
+    amdepth_list = list()
+    trialID_list = list()
+    trialOnset_list = list()
+    respLatency_list = list()
+    sig_matrix = np.array([])
+    for session_data in data_dict:
+        for analysisID in analysis_id:
+            for t_or_r_align in session_data['AnalysisID'][analysisID]['Alignment']:
+                for trialType in session_data['AnalysisID'][analysisID]['Alignment'][t_or_r_align]['Trial type']:
+                    cur_trialType_data = session_data['AnalysisID'][analysisID]['Alignment'][t_or_r_align]['Trial type'][trialType]
+                    if len(cur_trialType_data) == 0:
+                        continue
+                    n_trials = len(cur_trialType_data['TrialID'])
+
+                    # Info
+                    recording_list.extend([session_data['Subject'] + '_' + session_data['Date']] * n_trials)
+                    analysisID_list.extend([analysisID] * n_trials)
+                    t_or_r_align_list.extend([t_or_r_align] * n_trials)
+                    trialType_list.extend([trialType] * n_trials)
+
+                    # Behavioral data
+                    amdepth_list.extend(cur_trialType_data['AMdepth'])
+                    trialID_list.extend(cur_trialType_data['TrialID'])
+                    trialOnset_list.extend(cur_trialType_data['Trial_onset'])
+                    respLatency_list.extend(cur_trialType_data['RespLatency'])
+
+                    # Calcium data
+                    for trial_idx in range(n_trials):
+                        cur_trial = np.array(cur_trialType_data['Calcium_zscore'][trial_idx])
+                        if sig_matrix.size == 0:
+                            sig_matrix = np.hstack((sig_matrix, cur_trial))
+                        else:
+                            try:
+                                sig_matrix = np.vstack((sig_matrix, cur_trial))
+                            except ValueError:  # Different sessions might have slightly different number of points
+                                try:
+                                    sig_matrix = np.vstack((sig_matrix, cur_trial[0:sig_matrix.shape[1]]))  # new array is larger
+                                except ValueError:
+                                    nan_to_fill = np.full(sig_matrix.shape[1] - cur_trial.size, np.nan)
+                                    cur_trial = np.append(cur_trial, nan_to_fill)
+                                    sig_matrix = np.vstack((sig_matrix, cur_trial))
+
+    # Output CSV
+    file_name = 'FLMM_FP_data'
+    photometry_columns_prefix = 'FP.'
+    with open(sep.join([output_path, file_name + '.csv']), 'w', newline='') as file:
+        writer = csv.writer(file, delimiter=',')
+        csv_header = ['Recording', 'AnalysisID', 'Alignment', 'Trial_type',
+                      'AMDepth', 'TrialID', 'Trial_onset', 'RespLatency']
+        csv_header.extend([photometry_columns_prefix + str(dummy_idx + 1) for dummy_idx in range(sig_matrix.shape[1])])
+
+        writer.writerow(csv_header)
+
+        for trial_idx in range(len(recording_list)):
+            csv_row = [recording_list[trial_idx], analysisID_list[trial_idx], t_or_r_align_list[trial_idx], trialType_list[trial_idx],
+                       amdepth_list[trial_idx], trialID_list[trial_idx], trialOnset_list[trial_idx], respLatency_list[trial_idx],
+                       *sig_matrix[trial_idx, :]]
+            writer.writerow(csv_row)
