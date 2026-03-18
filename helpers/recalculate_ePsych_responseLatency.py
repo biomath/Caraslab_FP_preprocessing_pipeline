@@ -1,7 +1,6 @@
 import numpy as np
 from re import split
 from os.path import sep
-from os import makedirs
 import platform
 from helpers.preprocess_files import preprocess_files
 

@@ -13,7 +13,7 @@ else:
     REGEX_SEP = sep
 import json
 
-from pandas import DataFrame, read_csv
+from pandas import read_csv
 
 
 def preprocess_files(memory_path, settings_dict):
