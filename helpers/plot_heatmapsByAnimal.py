@@ -2,16 +2,14 @@ from os import makedirs
 from os.path import sep
 import platform
 
-from time import time
 from glob import glob
 from re import split
 
 import numpy as np
-from matplotlib import pyplot as plt, patches, rcParams
+from matplotlib import pyplot as plt, patches
 from matplotlib import colormaps
 
 import pandas as pd
-from scipy.signal import resample
 
 from matplotlib.backends.backend_pdf import PdfPages
 

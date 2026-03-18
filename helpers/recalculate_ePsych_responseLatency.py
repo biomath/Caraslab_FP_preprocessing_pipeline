@@ -1,7 +1,6 @@
 import numpy as np
 from re import split
 from os.path import sep
-from os import makedirs
 import platform
 from helpers.preprocess_files import preprocess_files
 
@@ -24,6 +23,14 @@ def recalculate_ePsych_responseLatency(input_list):
 
     (session_date_paths, SETTINGS_DICT) = input_list
 
+    # Add this dummy fix here just so that this code doesn't break when this variable is a list
+    if type(SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']) == str:
+        pass
+    else:  # must be list
+        assert type(
+            SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED']) == list, 'TRIAL_OR_RESPONSE_ALIGNED must be a string or a list'
+        SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED'] = SETTINGS_DICT['TRIAL_OR_RESPONSE_ALIGNED'][0]
+
     # Load globals
     shock_start_end = SETTINGS_DICT['SHOCK_START_END']
 
@@ -36,7 +43,7 @@ def recalculate_ePsych_responseLatency(input_list):
 
     for recording_path in session_date_paths:
         # Automatically skip passive files here for obvious reasons :)
-        if 'Passive' in recording_path:
+        if 'passive' in recording_path.lower():
             continue
 
         subj_date, info_key_times, spout_key_times, _, _ = preprocess_files(recording_path, SETTINGS_DICT)

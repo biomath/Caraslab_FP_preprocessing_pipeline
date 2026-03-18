@@ -1,24 +1,18 @@
 import platform
-from datetime import datetime
+
 from copy import deepcopy
-from os.path import sep
-import csv
+
 import json
 
-import numpy as np
 import pandas as pd
-from matplotlib.backends.backend_pdf import PdfPages
-import matplotlib.pyplot as plt
-from matplotlib import patches, colormaps
-from scipy.integrate import simpson
-from scipy.signal import resample, decimate
+
+from scipy.signal import decimate
 from scipy.stats import mode
 
-from helpers.format_axes import format_ax
 from helpers.plotting_and_measurements_helpers import *
 from helpers.preprocess_files import preprocess_files
 from helpers.stopwatch import tic, toc
-from helpers.write_json import write_json
+
 
 # Tweak the regex file separator for cross-platform compatibility
 if platform.system() == 'Windows':
@@ -50,8 +44,7 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
                              use_nonAM_baseline=False,
                              subtract_405=True,
                              ms_latency_values=False,
-                             sampling_frequency=None,
-                             downsample_fs=None):
+                             recording_fs=None):
     ret_list = list()
     # There are inconsistencies between the Aversive and Appetitive paradigm in the column naming.
     # Make all lower case here
@@ -73,14 +66,20 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
 
         if align_to_response:
             response_time = cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0]
+
+            # Treat Miss (no shock) as special cases here.
+            # For interesting comparison with response trials, align with the end of the AM if there is no latency value
+            #   (i.e., potential Miss (attempt))
+            if (np.isnan(response_time)) & (cur_trial['trialtype'] == 'Miss (no shock)'):
+                response_time = 1
         else:
             response_time = 0
 
         _signal_start = (cur_trial['trial_onset'] + signal_start_for_zscore + response_time)
         _signal_end = (cur_trial['trial_onset'] + signal_end_for_zscore + response_time)
         signal_around_trial = processed_signal[
-            (processed_signal['Time'] > _signal_start) &
-            (processed_signal['Time'] <= _signal_end)]
+            (processed_signal['Time'] >= _signal_start) &
+            (processed_signal['Time'] < _signal_end)]
 
         # 405 fit-removed signal
         if subtract_405:
@@ -99,8 +98,8 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
             _baseline_end = (cur_trial['trial_onset'] + baseline_end_for_zscore + response_time)
 
         baseline_signal = processed_signal[
-            (processed_signal['Time'] > _baseline_start) &
-            (processed_signal['Time'] <= _baseline_end)][
+            (processed_signal['Time'] >= _baseline_start) &
+            (processed_signal['Time'] < _baseline_end)][
             sig_column].values
 
 # # Truncate signal at response
@@ -113,19 +112,16 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
 
         dff_signal = signal_around_trial[sig_column].values
 
-        if downsample_fs is not None:
-            downsample_q = int(sampling_frequency // downsample_fs)
-            try:
-                dff_signal = decimate(dff_signal, downsample_q)
-            except ValueError:
-                # If signals are too short this will fail. Remove signal
-                continue
-
-            try:
-                baseline_signal = decimate(baseline_signal, downsample_q)
-            except ValueError:
-                # If signals are too short this will fail. Remove signal
-                continue
+        # Truncate to exact expected length based on time window and sampling rate
+        # This corrects for slight variations in snippet length due to downsampling
+        if recording_fs is not None:
+            expected_length = int((signal_end_for_zscore - signal_start_for_zscore) * recording_fs)
+            expected_baseline_length = int((baseline_end_for_zscore - baseline_start_for_zscore) * recording_fs)
+            # Just truncate if too long (avoids resampling artifacts)
+            if len(dff_signal) > expected_length:
+                dff_signal = dff_signal[:expected_length]
+            if len(baseline_signal) > expected_baseline_length:
+                baseline_signal = baseline_signal[:expected_baseline_length]
 
         # dff_zscore = (signal_around_trial[sig_column].values - baseline_mean) / baseline_std
 
@@ -192,11 +188,13 @@ def run_zscore_extraction(input_list):
     ms_latency_values = SETTINGS_DICT['MS_LATENCY_VALUES']
 
     use_nonAM_baseline = SETTINGS_DICT['USE_NONAM_BASELINE']
+
     # For data compactness when saving csvs and json files
     _precision_decimals = 3
 
     # Plot colors and some parameters
-    passive_color = 'black'
+    passivePre_color = 'black'
+    passivePost_color = 'darkgray'
     all_hit_color = '#0F52BA'
     hit_color = '#60B2E5'
     fa_color = '#F0A202'
@@ -221,7 +219,7 @@ def run_zscore_extraction(input_list):
         align_to_response = True
 
     trial_type_dict = dict()
-    sampling_frequency = 0
+    recording_fs = 0
     subj_date = ''
     t0 = tic()
 
@@ -239,10 +237,10 @@ def run_zscore_extraction(input_list):
         response_latency_filter = SETTINGS_DICT['RESPONSE_LATENCY_FILTER']
 
         # Determine experiment type
-        if '1IFC' in recording_path or '1IFC' in SETTINGS_DICT['EXPERIMENT_TYPE']:
+        if '1ifc' in recording_path.lower() or '1ifc' in SETTINGS_DICT['EXPERIMENT_TYPE'].lower():
             paradigm_type = '1IFC'
-        elif ('Aversive' in recording_path or 'Passive' in recording_path
-              or 'AversiveAM' in SETTINGS_DICT['EXPERIMENT_TYPE']):
+        elif ('aversive' in recording_path.lower() or 'passive' in recording_path.lower()
+              or 'aversiveam' in SETTINGS_DICT['EXPERIMENT_TYPE'].lower()):
             paradigm_type = 'AversiveAM'
         else:
             print('Behavioral experiment type not recognized... ', end='', flush=True)
@@ -253,14 +251,27 @@ def run_zscore_extraction(input_list):
 
         # If not set, approximate sampling rate
         if SETTINGS_DICT['SAMPLING_RATE'] is None:
-            # Find the most common difference between time points
-            # This is more robust than the mean since sessions can contain gaps in time due to artifact removal
-            sampling_frequency = 1 / mode(np.diff(processed_signal['Time']))[0]
-            if sampling_frequency == 0:
+            # Find the average distance between points, which approximates TDT sampling rate
+            recording_fs = 1 / np.mean(np.diff(processed_signal['Time']))
+            if recording_fs == 0:
                 print('Something weird with' + recording_path + 'sampling frequency estimation. Check key file.', end='', flush=True)
                 continue
         else:
-            sampling_frequency = SETTINGS_DICT['SAMPLING_RATE']
+            recording_fs = SETTINGS_DICT['SAMPLING_RATE']
+
+        if downsample_fs is not None:
+            downsample_q = int(recording_fs // downsample_fs)
+            downsampled_data = {}
+            for col in processed_signal.columns:
+                if col == 'Time':
+                    # Keep original time points (every Nth sample)
+                    downsampled_data[col] = processed_signal[col].values[::downsample_q]
+                else:
+                    # Use zero_phase=True to avoid time shift in signal data
+                    downsampled_data[col] = decimate(processed_signal[col].values, downsample_q, zero_phase=True)
+
+            processed_signal = pd.DataFrame(downsampled_data)
+            recording_fs = downsample_fs
 
         for trial_type in trial_types:
             cur_trial_align_to_response = align_to_response  # Will be changed temporarily for passive sessions
@@ -333,28 +344,16 @@ def run_zscore_extraction(input_list):
                                                    use_nonAM_baseline=use_nonAM_baseline,
                                                    subtract_405=subtract_405,
                                                    ms_latency_values=ms_latency_values,
-                                                   sampling_frequency=sampling_frequency,
-                                                   downsample_fs=downsample_fs)
+                                                   recording_fs=recording_fs)
 
             trial_type_dict.update({trial_type: {'info': [x[0] for x in cur_signals],
                                                  'dff_signal': [x[1] for x in cur_signals],
                                                  'dff_baseline': [x[2] for x in cur_signals]}})
     toc(t0)
 
-    # Update sampling frequency to match the downsampled frequency
-    if downsample_fs is not None and sampling_frequency > downsample_fs:
-        downsample_q = int(sampling_frequency // downsample_fs)
-        try:
-            sampling_frequency /= downsample_q
-        except ZeroDivisionError:
-            print('Something weird with sampling frequency estimation. Check key files', end='',
-                  flush=True)
-            return
-
-
     # Uniformize lengths and exclude truncated signals by more than half sampling rate points
     # The median length should be the target
-    tolerance = sampling_frequency / 2
+    tolerance = recording_fs / 2
     sig_lengths = []
     print('Uniformizing signal lengths for plotting... ', end='', flush=True)
     t0 = tic()
@@ -406,7 +405,7 @@ def run_zscore_extraction(input_list):
                                      signal_start_end[0], signal_start_end[1],
                                      ams_to_analyze, _precision_decimals,
                                      all_hit_color, hitShock_color, hitNoShock_color, miss_color, missShock_color,
-                                     missNoShock_color, fa_color, reject_color, passive_color)
+                                     missNoShock_color, fa_color, reject_color, passivePre_color, passivePost_color)
         toc(t0)
 
     # Plot responses split by AM depth
@@ -523,7 +522,6 @@ def run_zscore_extraction_pumpTriggered_spoutOff(input_list):
 
         ## Grab spout offset triggered signals within windows
         cur_signals = []
-        trial_id = []  # Assign an ID to each event
         spout_offsets = spout_key_times['Spout_offset'].values
         signal_start_for_zscore = signal_start_end[0]
         signal_end_for_zscore = signal_start_end[1]
@@ -632,9 +630,6 @@ def run_zscore_extraction_pumpTriggered_spoutOff(input_list):
 
     # Extract Z-score
     trial_type_dict = __get_trialID_zscore(trial_type_dict)
-
-    # Select specific AMs
-    ams_to_analyze = None  # or None for all
 
     ###### PLOTTING AND MEASUREMENTS START HERE ######
     # Plot responses triggered by turning off the pump (0 mL/min flag)
