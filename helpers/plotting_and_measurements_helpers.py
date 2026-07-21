@@ -1,3 +1,10 @@
+"""Plots summary/AM-depth/extinction z-score curves and computes per-trial AUC/peak measurements.
+
+Consumes the per-trial dF/F and z-score arrays assembled by
+:mod:`helpers.extract_FP_trial_zscores`, produces PDF plots and CSV curve
+exports, measures AUC/peak values per trial and writes them into the
+session JSON, and exports a flat CSV formatted for FLMM analysis.
+"""
 from os.path import sep
 
 import numpy as np
@@ -18,6 +25,52 @@ def plot_FP_trial_zscore_summary(trial_type_dict, align_to_response, subj_date,
                                  ams_to_analyze, _precision_decimals,
                                  all_hit_color, hitShock_color, hitNoShock_color, miss_color, missShock_color,
                                  missNoShock_color, fa_color, reject_color, passivePre_color, passivePost_color):
+    """Plot a single-panel summary of mean z-scored signal (± SEM) per trial type and export the underlying curves.
+
+    Produces one PDF (one overlaid line per trial type present in
+    ``trial_type_dict``) and a companion ``_curves.csv`` with the plotted
+    mean/SEM traces.
+
+    Parameters
+    ----------
+    trial_type_dict : dict
+        Mapping of trial-type name to a dict with ``'info'`` (per-trial
+        ``[trial_id, amdepth_dB, onset, offset, resp_latency]`` lists) and
+        ``'zscore'`` (per-trial z-scored signal arrays), as produced by
+        :mod:`helpers.extract_FP_trial_zscores`.
+    align_to_response : bool
+        If True, label the x-axis/output filenames as response-aligned;
+        otherwise trial-onset-aligned.
+    subj_date : str
+        ``'{subject}_{date}'`` identifier used in output filenames/CSV rows.
+    output_plots_path : str
+        Directory to write the PDF and CSV into.
+    target_sound_onset, target_sound_offset : float
+        Sound onset/offset times (seconds), shaded on the plot when
+        ``align_to_response`` is False.
+    paradigm_type : {'1IFC', 'AversiveAM'}
+        Behavioral paradigm; adds an extra response-window shading band for
+        ``'1IFC'``.
+    response_latency_filter : float
+        Minimum response latency used to shade the allowed response window
+        for 1IFC plots.
+    signal_start, signal_end : float
+        Time bounds (seconds) of the extracted signal window, used to build
+        the shared x-axis.
+    ams_to_analyze : list or None
+        If not None, restricts plotted trials to those whose AM depth (index
+        1 of each trial's ``'info'`` entry) is in this list.
+    _precision_decimals : int
+        Number of decimals to round CSV values to.
+    all_hit_color, hitShock_color, hitNoShock_color, miss_color, missShock_color, missNoShock_color, fa_color, reject_color, passivePre_color, passivePost_color : str
+        Matplotlib color specs used to color each trial type's line/legend
+        entry.
+
+    Returns
+    -------
+    None
+        Side effects only: writes a PDF and a CSV to ``output_plots_path``.
+    """
     if align_to_response:
         file_name = subj_date + '_responseAligned_trialSummary'
         x_label = "Time from response (s)"
@@ -143,6 +196,44 @@ def plot_FP_trial_zscore_byAMdepth(trial_type_dict, align_to_response, subj_date
                                    output_plots_path, target_sound_onset, target_sound_offset,
                                    paradigm_type, response_latency_filter, signal_start, signal_end,
                                    ams_to_analyze, _precision_decimals):
+    """Plot mean z-scored signal (± SEM) split by AM depth, one PDF page per trial-type group.
+
+    Groups trial types per ``paradigm_type`` (e.g. combining
+    ``'Hit (shock)'``/``'Hit (no shock)'`` onto one page for AversiveAM),
+    and within each page draws one colored line per AM depth (color mapped
+    via the ``'plasma'`` colormap, from a `perc_value` derived from the dB
+    depth). Also exports the underlying curves to a companion CSV.
+
+    Parameters
+    ----------
+    trial_type_dict : dict
+        See :func:`plot_FP_trial_zscore_summary`.
+    align_to_response : bool
+        See :func:`plot_FP_trial_zscore_summary`.
+    subj_date : str
+        See :func:`plot_FP_trial_zscore_summary`.
+    output_plots_path : str
+        See :func:`plot_FP_trial_zscore_summary`.
+    target_sound_onset, target_sound_offset : float
+        See :func:`plot_FP_trial_zscore_summary`.
+    paradigm_type : {'1IFC', 'AversiveAM'}
+        Determines which trial-type groups are plotted as separate PDF pages.
+    response_latency_filter : float
+        See :func:`plot_FP_trial_zscore_summary`.
+    signal_start, signal_end : float
+        See :func:`plot_FP_trial_zscore_summary`.
+    ams_to_analyze : list or None
+        If None, AM depths are auto-collected from every trial type present
+        in ``trial_type_dict``; otherwise restricts to the given depths.
+    _precision_decimals : int
+        See :func:`plot_FP_trial_zscore_summary`.
+
+    Returns
+    -------
+    None
+        Side effects only: writes a multi-page PDF and a CSV to
+        ``output_plots_path``.
+    """
     if align_to_response:
         file_name = subj_date + '_responseAligned_byAMdepth'
         x_label = "Time from response (s)"
@@ -201,6 +292,9 @@ def plot_FP_trial_zscore_byAMdepth(trial_type_dict, align_to_response, subj_date
                     linestyle = '-'
 
                 for amdepth in sorted(list(set(all_ams)), reverse=True):
+                    # amdepth == -40 is the 0%-AM-depth sentinel (see extract_FP_trial_zscores);
+                    # perc_value is pinned to 1 here rather than computed via 10**(amdepth/20)
+                    # (which would instead round to ~0)
                     if amdepth > -40:
                         perc_value = np.round(10 ** (amdepth / 20), 2)
                     else:
@@ -290,9 +384,37 @@ def plot_FP_trial_zscore_byAMdepth(trial_type_dict, align_to_response, subj_date
 
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# DRAFT CODE: extinction / pump-triggered spout-off pipeline.
+# Only exercised via the not-fully-validated
+# run_zscore_extraction_pumpTriggered_spoutOff path — treat as a work in progress.
+# ──────────────────────────────────────────────────────────────────────────────
 def plot_FP_extinction_spoutOff_zscores(trial_type_dict, subj_date,
                                             output_plots_path, signal_start,
                                             signal_end, _precision_decimals):
+    """Plot mean z-scored signal (± SEM) aligned to pump zero-flow-triggered spout offset, for the ``'Zero_flow'`` trial type.
+
+    Parameters
+    ----------
+    trial_type_dict : dict
+        Must contain a ``'Zero_flow'`` key with ``'info'`` and ``'zscore'``
+        entries, as produced by
+        :func:`helpers.extract_FP_trial_zscores.run_zscore_extraction_pumpTriggered_spoutOff`.
+    subj_date : str
+        See :func:`plot_FP_trial_zscore_summary`.
+    output_plots_path : str
+        See :func:`plot_FP_trial_zscore_summary`.
+    signal_start, signal_end : float
+        See :func:`plot_FP_trial_zscore_summary`.
+    _precision_decimals : int
+        See :func:`plot_FP_trial_zscore_summary`.
+
+    Returns
+    -------
+    None
+        Side effects only: writes a single-page PDF and a CSV to
+        ``output_plots_path``.
+    """
     trial_type = 'Zero_flow'
     x_label = "Time from response (s)"
     file_name = subj_date + '_extinction_spoutOffAligned'
@@ -356,6 +478,36 @@ def __calculate_PeakValue_and_AUC(sigs, trial_info,
                                   baseline_start, baseline_end,
                                   auc_start, auc_end,
                                   x_axis):
+    """Compute per-trial response AUC, peak value, and baseline AUC via Simpson's rule integration.
+
+    Parameters
+    ----------
+    sigs : numpy.ndarray
+        2-D array of shape ``(n_trials, n_timepoints)`` with one signal
+        (dF/F or z-score) row per trial.
+    trial_info : list
+        Per-trial info list; only its length (``n_trials``) is used here.
+    baseline_start, baseline_end : float
+        Time bounds (seconds, relative to ``x_axis``) defining the baseline
+        integration window.
+    auc_start, auc_end : float
+        Time bounds (seconds, relative to ``x_axis``) defining the response
+        integration window.
+    x_axis : numpy.ndarray
+        1-D time axis (seconds) matching ``sigs``'s second dimension.
+
+    Returns
+    -------
+    auc_response : numpy.ndarray
+        Per-trial area under the curve within the response window
+        (Simpson's rule).
+    peak : numpy.ndarray
+        Per-trial peak value within the response window — whichever of the
+        local max or min has the larger absolute value (so peaks can be
+        reported as negative deflections).
+    auc_baseline : numpy.ndarray
+        Per-trial area under the curve within the baseline window.
+    """
     auc_response = np.zeros(np.shape(sigs)[0])
     peak = np.zeros(np.shape(sigs)[0])
     auc_baseline = np.zeros(np.shape(sigs)[0])
@@ -390,6 +542,64 @@ def measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or
                              auc_start, auc_end,
                              min_length, ams_to_analyze, _precision_decimals,
                              output_path, output_sessionData_json):
+    """Measure per-trial AUC/peak values, write them (+ raw traces) into the session JSON, and export a trial-by-trial CSV.
+
+    For each trial type, stacks per-trial dF/F and z-score signals into
+    fixed-width arrays (padded/truncated to ``min_length``), computes AUC and
+    peak measurements via :func:`__calculate_PeakValue_and_AUC`, optionally
+    writes the full measurement + raw-trace set into
+    ``cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type]``
+    and persists it via :func:`~helpers.write_json.write_json`, and always
+    writes a flat trial-by-trial measurements CSV.
+
+    Parameters
+    ----------
+    trial_type_dict : dict
+        See :func:`plot_FP_trial_zscore_summary`; must also contain
+        ``'dff_signal'`` per trial type.
+    cur_sessionData : dict
+        Session JSON structure (as produced by
+        :func:`helpers.preprocess_files.preprocess_files`) to update in place.
+    analysis_id : str
+        Key identifying this analysis run within ``cur_sessionData['AnalysisID']``.
+    t_or_r_align : {'trial_aligned', 'response_aligned'}
+        Alignment mode; also used to choose the output CSV filename suffix.
+    subj_date : str
+        See :func:`plot_FP_trial_zscore_summary`.
+    output_plots_path : str
+        Directory to write the trial-by-trial measurements CSV into.
+    baseline_start, baseline_end, signal_start, signal_end, auc_start, auc_end : float
+        Time-window bounds forwarded to :func:`__calculate_PeakValue_and_AUC`
+        and used to build the shared x-axis.
+    min_length : int
+        Common trial length (in samples) that all signals are padded/
+        truncated to before measurement.
+    ams_to_analyze : list or None
+        If not None, restricts measured trials to the given AM depths (see
+        Notes for a caveat).
+    _precision_decimals : int
+        Number of decimals to round measurements/traces to before writing.
+    output_path : str
+        Base output directory; the sessionData JSON is written to
+        ``output_path/JSON files/``.
+    output_sessionData_json : bool
+        If True, write the updated ``cur_sessionData`` back to disk for each
+        trial type processed.
+
+    Returns
+    -------
+    None
+        Side effects only: mutates ``cur_sessionData`` in place, optionally
+        writes it to disk, and always writes a CSV to ``output_plots_path``.
+
+    Notes
+    -----
+    When ``ams_to_analyze`` filters out a trial, its row in the
+    pre-allocated ``dff_sigs``/``zscore_sigs`` arrays (already zero-filled
+    before the filter check) is left as all zeros rather than removed, so a
+    "phantom" zero-signal trial is still measured and included in the
+    output alongside genuine trials.
+    """
     if t_or_r_align == 'response_aligned':
         file_name = subj_date + '_responseAligned_trialByTrial'
     else:
@@ -408,6 +618,9 @@ def measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or
                     dff_sigs[i, 0:len(ts_dff)] = ts_dff
                     zscore_sigs[i, 0:len(ts_zscore)] = ts_zscore
                 else:
+                    # NOTE: row i of dff_sigs/zscore_sigs was already zero-filled above
+                    # and is not removed here, so this trial is skipped but its all-zero
+                    # row still gets measured/exported below (see docstring Notes).
                     continue
             else:
                 dff_sigs[i, 0:len(ts_dff)] = ts_dff
@@ -542,6 +755,10 @@ def measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or
                                 [baseline_auc_zscore]
                                 )
 
+# ──────────────────────────────────────────────────────────────────────────────
+# DRAFT CODE: extinction / pump-triggered spout-off pipeline.
+# Known call-site arity bug (see docstring below) — treat as a work in progress.
+# ──────────────────────────────────────────────────────────────────────────────
 def measure_extinction_spoutOffset_signals_and_save(
         trial_type_dict, cur_sessionData, analysis_id, subj_date,
         output_plots_path,
@@ -550,6 +767,55 @@ def measure_extinction_spoutOffset_signals_and_save(
         auc_start, auc_end,
         min_length, _precision_decimals,
         sampling_frequency, output_path, output_sessionData_json):
+    """Measure per-trial AUC/peak values for pump-triggered spout-offset ("extinction") trials and export them.
+
+    Analogous to :func:`measure_signals_and_save`, but specialized for the
+    single ``'Zero_flow'`` trial type produced by
+    :func:`helpers.extract_FP_trial_zscores.run_zscore_extraction_pumpTriggered_spoutOff`
+    (no ``ams_to_analyze`` filtering, and always writes under the hardcoded
+    ``'response_aligned'`` alignment key).
+
+    Parameters
+    ----------
+    trial_type_dict : dict
+        See :func:`measure_signals_and_save`.
+    cur_sessionData : dict
+        See :func:`measure_signals_and_save`.
+    analysis_id : str
+        See :func:`measure_signals_and_save`.
+    subj_date : str
+        See :func:`plot_FP_trial_zscore_summary`.
+    output_plots_path : str
+        See :func:`measure_signals_and_save`.
+    baseline_start, baseline_end, signal_start, signal_end, auc_start, auc_end : float
+        See :func:`measure_signals_and_save`.
+    min_length : int
+        See :func:`measure_signals_and_save`.
+    _precision_decimals : int
+        See :func:`measure_signals_and_save`.
+    sampling_frequency : float
+        Not used in this function's body.
+    output_path : str
+        See :func:`measure_signals_and_save`.
+    output_sessionData_json : bool
+        See :func:`measure_signals_and_save`.
+
+    Returns
+    -------
+    None
+        Side effects only, mirroring :func:`measure_signals_and_save`.
+
+    Notes
+    -----
+    This function's body is ~95% duplicated from :func:`measure_signals_and_save`
+    (minus the ``ams_to_analyze`` filter and AM-depth field). Its only
+    current call site (inside the dead
+    :func:`helpers.extract_FP_trial_zscores.run_zscore_extraction_pumpTriggered_spoutOff`
+    code path) passes 15 positional arguments while this signature requires
+    16 — if that path were ever reactivated as-is, ``output_path`` would
+    land in the ``sampling_frequency`` slot and ``output_sessionData_json``
+    would be missing entirely, raising a ``TypeError``.
+    """
     t_or_r_align = 'response_aligned'  # Hardcode this for now
     file_name = subj_date + '_extinction_spoutOffAligned_trialByTrial'
     output_dict = dict()
@@ -687,6 +953,47 @@ def measure_extinction_spoutOffset_signals_and_save(
                                 )
 
 def output_json_to_flmm_format(data_dict, output_path, analysis_id: list):
+    """Flatten a batch of session JSON dicts into a single wide CSV formatted for FLMM analysis.
+
+    For every session, analysis ID, alignment, and trial type present,
+    emits one output row per trial with trial metadata columns followed by
+    one ``FP.<n>`` column per z-scored calcium signal timepoint. Handles
+    slightly ragged per-trial signal lengths across sessions by truncating
+    or NaN-padding to the running matrix width.
+
+    Parameters
+    ----------
+    data_dict : list of dict
+        Parsed session JSON dicts (e.g. from
+        :func:`helpers.get_JSON_data.get_JSON_data`), each following the
+        ``{'Subject', 'Date', 'AnalysisID': {...}}`` schema written by
+        :func:`helpers.preprocess_files.preprocess_files` /
+        :func:`measure_signals_and_save`.
+    output_path : str
+        Directory to write ``FLMM_FP_data.csv`` into.
+    analysis_id : list
+        Analysis IDs to include; each session's ``'AnalysisID'`` dict is
+        indexed by every entry in this list.
+
+    Returns
+    -------
+    None
+        Side effect only: writes ``FLMM_FP_data.csv`` to ``output_path``.
+
+    Raises
+    ------
+    ValueError
+        If no trials were found across all of ``data_dict``/``analysis_id``
+        (e.g. because the sessionData JSON has no populated trials for the
+        given analysis ID) — raised with an explicit message instead of
+        letting a bare ``IndexError`` surface from the CSV-header step below.
+
+    Notes
+    -----
+    ``sig_matrix`` is built by repeated ``np.vstack`` calls inside the
+    per-trial loop (O(n^2) in the number of trials); pre-allocating based on
+    a known max trial count/length would be more efficient for large batches.
+    """
     recording_list = list()
     analysisID_list = list()
     t_or_r_align_list = list()
@@ -732,6 +1039,20 @@ def output_json_to_flmm_format(data_dict, output_path, analysis_id: list):
                                     nan_to_fill = np.full(sig_matrix.shape[1] - cur_trial.size, np.nan)
                                     cur_trial = np.append(cur_trial, nan_to_fill)
                                     sig_matrix = np.vstack((sig_matrix, cur_trial))
+
+    if len(recording_list) == 0:
+        raise ValueError(
+            'No trials were found for analysis_id=' + str(analysis_id) +
+            ' in the provided data_dict. Check that the sessionData JSON files '
+            "actually have populated 'Trial type' entries for this analysis ID "
+            "(e.g. that extract_trial_zscores and output_sessionData_json were "
+            'enabled when the pipeline was run), and that analysis_id matches '
+            "an 'AnalysisID' key present in the JSON.")
+
+    # sig_matrix is only guaranteed to be 2-D once a second trial has been
+    # vstack'd onto it (the very first trial is added via hstack, which stays
+    # 1-D); promote it here so a single-trial batch doesn't crash below.
+    sig_matrix = np.atleast_2d(sig_matrix)
 
     # Output CSV
     file_name = 'FLMM_FP_data'
