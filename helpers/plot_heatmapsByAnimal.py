@@ -1,17 +1,16 @@
+"""Builds a cross-subject/cross-session heatmap PDF of trial-summary curves, one panel per trial type."""
 from os import makedirs
 from os.path import sep
 import platform
 
-from time import time
 from glob import glob
 from re import split
 
 import numpy as np
-from matplotlib import pyplot as plt, patches, rcParams
+from matplotlib import pyplot as plt, patches
 from matplotlib import colormaps
 
 import pandas as pd
-from scipy.signal import resample
 
 from matplotlib.backends.backend_pdf import PdfPages
 
@@ -22,6 +21,57 @@ else:
     REGEX_SEP = sep
 
 def plot_heatmapsByAnimal(SETTINGS_DICT):
+    """Build a per-trial-type heatmap PDF of mean signal across all subjects/sessions.
+
+    Loads every ``*_trialSummary_curves.csv`` under
+    ``{OUTPUT_PATH}/Aligned signals`` (as produced by
+    :func:`helpers.plotting_and_measurements_helpers.plot_FP_trial_zscore_summary`),
+    optionally filtered by session name via ``SESSIONS_TO_RUN``/``SESSIONS_TO_EXCLUDE``,
+    uniformizes/bins their signal lengths, fills in missing (subject, day,
+    trial type) combinations with NaN rows, sorts sessions by mean response
+    in the ``SORT_BY_WHICH_TRIALTYPE`` window, and plots one heatmap panel
+    per trial type (rows = sessions, columns = time) with a per-subject
+    color sidebar, to a single multi-panel PDF page.
+
+    Parameters
+    ----------
+    SETTINGS_DICT : dict
+        Pipeline settings dict. Reads:
+
+        - ``'OUTPUT_PATH'`` : base output directory; input CSVs are read
+          from and the heatmap PDF is written to
+          ``{OUTPUT_PATH}/Aligned signals`` and ``OUTPUT_PATH`` respectively.
+        - ``'EXPERIMENT_TAG'`` : used in the output PDF filename.
+        - ``'SUBJECT_COLORS'`` : list of colors for the per-subject sidebar,
+          or ``None`` to fall back to the ``'tab20'`` colormap.
+        - ``'SESSIONS_TO_RUN'`` : list of session-name substrings to include,
+          a path to a CSV with a ``'Session'`` column, or ``None`` for all.
+        - ``'SESSIONS_TO_EXCLUDE'`` : list of session-name substrings to
+          exclude, or ``None``.
+        - ``'BIN_SIZE'`` : time-bin size (seconds) used to convert
+          time-window bounds to sample-index bounds.
+        - ``'PLOT_PRETRIAL_DURATION'`` / ``'PLOT_POSTTRIAL_DURATION'`` :
+          seconds of signal to show before/after the alignment point.
+        - ``'TRIALTYPE_DICT'`` : mapping of trial-type name to a
+          ``(snippet_start, snippet_end)`` window (seconds) used for sorting.
+        - ``'SORT_BY_WHICH_TRIALTYPE'`` : which trial type's window/mean
+          response is used to order sessions within each subject group.
+        - ``'SAMPLING_RATE'`` : recording sampling rate, or ``None`` to
+          estimate it from the CSV's ``'Time_s'`` column.
+
+    Returns
+    -------
+    None
+        Side effect only: writes ``{EXPERIMENT_TAG}_heatmap.pdf`` to
+        ``OUTPUT_PATH``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no ``*trialSummary_curves.csv`` files are found under
+        ``{OUTPUT_PATH}/Aligned signals`` after applying the
+        ``SESSIONS_TO_RUN``/``SESSIONS_TO_EXCLUDE`` filters.
+    """
     # Load globals
     output_path = SETTINGS_DICT['OUTPUT_PATH']
     input_path = output_path + sep + 'Aligned signals'
@@ -52,6 +102,12 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
         signals_path = [path for path in signals_path if
                         not any([chosen for chosen in sessions_to_exclude if chosen in path])]
 
+    if len(signals_path) == 0:
+        raise FileNotFoundError(
+            'No *trialSummary_curves.csv files found in ' + input_path +
+            ' (after applying SESSIONS_TO_RUN/SESSIONS_TO_EXCLUDE filters, if any). '
+            'Check OUTPUT_PATH and the session filters in SETTINGS_DICT.')
+
     day_list = []
     subj_list = []
     sig_list = []
@@ -80,7 +136,7 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
 
     # Now uniformize lengths (tolerated jitter of 1 point) and resample using bin_size
     print('Uniformizing signal lengths for plotting...')
-    min_length = np.round(np.min([len(x) for x in sig_list if not np.alltrue(np.isnan(x))]), 0)
+    min_length = np.round(np.min([len(x) for x in sig_list if not np.all(np.isnan(x))]), 0)
     # plot_list = np.array([resample(x[0:int(min_length)], int(min_length*sampling_interval/bin_size)) for x in sig_list], dtype=float)
     plot_list = np.array(
         [x[0:int(min_length)] for x in sig_list], dtype=float)
@@ -134,10 +190,15 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
 
         snippet_start = trialType_dict[sort_by_which_trialtype][0]
         snippet_end = trialType_dict[sort_by_which_trialtype][1]
+        # plot_list columns start at time -plot_pretrial_duration, so shifting the
+        # window bounds by +plot_pretrial_duration before dividing by bin_size converts
+        # them from seconds-relative-to-alignment into column indices into plot_list.
         relevant_indices = np.arange(
             np.floor((snippet_start + plot_pretrial_duration) / bin_size),
             np.floor((snippet_end + plot_pretrial_duration) / bin_size) )
 
+        # NOTE: cur_auroc is a holdover name from a different (auROC-based) pipeline;
+        # here it's just one session's heatmap signal row.
         relevant_snippet = np.array([cur_auroc[[int(idx) for idx in relevant_indices]]
                                      for cur_auroc in cur_resps])
 
@@ -146,6 +207,9 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
         overall_session_order.extend(cur_sessions[sorted_indices])
         colorbar_splits.append(len(overall_session_order))
 
+    # Heatmap rows are drawn top-to-bottom in overall_session_order, but the subject
+    # colorbar below is built bottom-to-top (axes-fraction y=0 is the bottom), so the
+    # cumulative session counts are flipped here to match that drawing order.
     colorbar_splits = [len(overall_session_order) - x for x in colorbar_splits]
     print('Done!')
 
@@ -184,6 +248,9 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
             for group_idx, cur_group in reversed(list(enumerate(unique_groups))):
                 y_start = (colorbar_splits[group_idx + 1]) / n_sessions
                 y_height = (colorbar_splits[group_idx]) / n_sessions - y_start
+                # x=-0.1, width=0.1 in axes-fraction coords (transform=ax.transAxes) draws
+                # a sidebar strip 10% of the axes' width just to the left of the heatmap;
+                # clip_on=False keeps it visible outside the axes' data area.
                 rect = patches.Rectangle(
                     (-0.1, y_start), width=0.1, height=y_height, facecolor=subject_colors[group_idx], transform=ax.transAxes,
                     clip_on=False, edgecolor='none'
@@ -204,8 +271,8 @@ def plot_heatmapsByAnimal(SETTINGS_DICT):
             ax.set_xticklabels(new_ticks.astype(int))
             ax.set_xlabel('Time (s)')
 
-            ax.tick_params(axis='x', bottom='off')
-            ax.tick_params(axis='y', left='off', right='off')
+            ax.tick_params(axis='x', bottom=False)
+            ax.tick_params(axis='y', left=False, right=False)
 
             ax.spines['right'].set_visible(False)
             ax.spines['top'].set_visible(False)
