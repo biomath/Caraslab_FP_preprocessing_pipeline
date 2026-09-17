@@ -556,7 +556,11 @@ def measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or
     ----------
     trial_type_dict : dict
         See :func:`plot_FP_trial_zscore_summary`; must also contain
-        ``'dff_signal'`` per trial type.
+        ``'dff_signal'`` per trial type. Each entry's ``'info'`` tuple is
+        expected to carry, past the first 5 elements, ``[reminder_flag,
+        baseline_spoutOffset_Hz, response_spoutOffset_Hz,
+        baseline_spoutOnset_Hz, response_spoutOnset_Hz]`` as produced by
+        :func:`helpers.extract_FP_trial_zscores.__get_trialID_dff_signal`.
     cur_sessionData : dict
         Session JSON structure (as produced by
         :func:`helpers.preprocess_files.preprocess_files`) to update in place.
@@ -670,6 +674,21 @@ def measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or
             cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type][
                 'RespLatency'] = \
                 [np.round(x[4], _precision_decimals) for x in trial_info]
+            cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type][
+                'Reminder'] = \
+                [x[5] for x in trial_info]
+            cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type][
+                'Baseline_spoutOffset_Hz'] = \
+                [np.round(x[6], _precision_decimals) for x in trial_info]
+            cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type][
+                'Response_spoutOffset_Hz'] = \
+                [np.round(x[7], _precision_decimals) for x in trial_info]
+            cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type][
+                'Baseline_spoutOnset_Hz'] = \
+                [np.round(x[8], _precision_decimals) for x in trial_info]
+            cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type][
+                'Response_spoutOnset_Hz'] = \
+                [np.round(x[9], _precision_decimals) for x in trial_info]
 
             # Signal measurements
             cur_sessionData['AnalysisID'][analysis_id]['Alignment'][t_or_r_align]['Trial type'][trial_type][
@@ -716,6 +735,11 @@ def measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or
                         ['Trial_Onset'] +
                         ['Trial_Offset'] +
                         ['RespLatency'] +
+                        ['Reminder'] +
+                        ['Baseline_SpoutOffset_Hz'] +
+                        ['Response_SpoutOffset_Hz'] +
+                        ['Baseline_SpoutOnset_Hz'] +
+                        ['Response_SpoutOnset_Hz'] +
                         ['Area_under_curve_dff'] +
                         ['Peak_value_dff'] +
                         ['Baseline_area_under_curve_dff'] +
@@ -725,13 +749,18 @@ def measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or
 
         for trial_type in output_dict.keys():
             for trial_idx in range(len(output_dict[trial_type][0])):
-                # output_list[x][0] is (cur_trial['trialid'], cur_trial['amdepth'], cur_trial['trial_onset'])
+                # output_list[x][0] is (cur_trial['trialid'], cur_trial['amdepth'], cur_trial['trial_onset'], ...)
 
                 trialID = output_dict[trial_type][0][trial_idx][0]
                 AMdepth = np.round(output_dict[trial_type][0][trial_idx][1], 2)
                 trial_onset = np.round(output_dict[trial_type][0][trial_idx][2], _precision_decimals)
                 trial_offset = np.round(output_dict[trial_type][0][trial_idx][3], _precision_decimals)
                 resp_latency = np.round(output_dict[trial_type][0][trial_idx][4], _precision_decimals)
+                reminder = output_dict[trial_type][0][trial_idx][5]
+                baseline_spoutOffset_hz = np.round(output_dict[trial_type][0][trial_idx][6], _precision_decimals)
+                response_spoutOffset_hz = np.round(output_dict[trial_type][0][trial_idx][7], _precision_decimals)
+                baseline_spoutOnset_hz = np.round(output_dict[trial_type][0][trial_idx][8], _precision_decimals)
+                response_spoutOnset_hz = np.round(output_dict[trial_type][0][trial_idx][9], _precision_decimals)
 
                 response_auc_dff = np.round(output_dict[trial_type][1][trial_idx], _precision_decimals)
                 response_peak_dff = np.round(output_dict[trial_type][2][trial_idx], _precision_decimals)
@@ -747,6 +776,11 @@ def measure_signals_and_save(trial_type_dict, cur_sessionData, analysis_id, t_or
                                 [trial_onset] +
                                 [trial_offset] +
                                 [resp_latency] +
+                                [reminder] +
+                                [baseline_spoutOffset_hz] +
+                                [response_spoutOffset_hz] +
+                                [baseline_spoutOnset_hz] +
+                                [response_spoutOnset_hz] +
                                 [response_auc_dff] +
                                 [response_peak_dff] +
                                 [baseline_auc_dff] +
@@ -1002,6 +1036,11 @@ def output_json_to_flmm_format(data_dict, output_path, analysis_id: list):
     trialID_list = list()
     trialOnset_list = list()
     respLatency_list = list()
+    reminder_list = list()
+    baseline_spoutOffset_hz_list = list()
+    response_spoutOffset_hz_list = list()
+    baseline_spoutOnset_hz_list = list()
+    response_spoutOnset_hz_list = list()
     sig_matrix = np.array([])
     for session_data in data_dict:
         for analysisID in analysis_id:
@@ -1023,6 +1062,11 @@ def output_json_to_flmm_format(data_dict, output_path, analysis_id: list):
                     trialID_list.extend(cur_trialType_data['TrialID'])
                     trialOnset_list.extend(cur_trialType_data['Trial_onset'])
                     respLatency_list.extend(cur_trialType_data['RespLatency'])
+                    reminder_list.extend(cur_trialType_data['Reminder'])
+                    baseline_spoutOffset_hz_list.extend(cur_trialType_data['Baseline_spoutOffset_Hz'])
+                    response_spoutOffset_hz_list.extend(cur_trialType_data['Response_spoutOffset_Hz'])
+                    baseline_spoutOnset_hz_list.extend(cur_trialType_data['Baseline_spoutOnset_Hz'])
+                    response_spoutOnset_hz_list.extend(cur_trialType_data['Response_spoutOnset_Hz'])
 
                     # Calcium data
                     for trial_idx in range(n_trials):
@@ -1060,7 +1104,9 @@ def output_json_to_flmm_format(data_dict, output_path, analysis_id: list):
     with open(sep.join([output_path, file_name + '.csv']), 'w', newline='') as file:
         writer = csv.writer(file, delimiter=',')
         csv_header = ['Recording', 'AnalysisID', 'Alignment', 'Trial_type',
-                      'AMDepth', 'TrialID', 'Trial_onset', 'RespLatency']
+                      'AMDepth', 'TrialID', 'Trial_onset', 'RespLatency', 'Reminder',
+                      'Baseline_spoutOffset_Hz', 'Response_spoutOffset_Hz',
+                      'Baseline_spoutOnset_Hz', 'Response_spoutOnset_Hz']
         csv_header.extend([photometry_columns_prefix + str(dummy_idx + 1) for dummy_idx in range(sig_matrix.shape[1])])
 
         writer.writerow(csv_header)
@@ -1068,5 +1114,7 @@ def output_json_to_flmm_format(data_dict, output_path, analysis_id: list):
         for trial_idx in range(len(recording_list)):
             csv_row = [recording_list[trial_idx], analysisID_list[trial_idx], t_or_r_align_list[trial_idx], trialType_list[trial_idx],
                        amdepth_list[trial_idx], trialID_list[trial_idx], trialOnset_list[trial_idx], respLatency_list[trial_idx],
+                       reminder_list[trial_idx], baseline_spoutOffset_hz_list[trial_idx], response_spoutOffset_hz_list[trial_idx],
+                       baseline_spoutOnset_hz_list[trial_idx], response_spoutOnset_hz_list[trial_idx],
                        *sig_matrix[trial_idx, :]]
             writer.writerow(csv_row)

@@ -90,14 +90,18 @@ def recalculate_ePsych_responseLatency(input_list):
             continue
 
         spout_offsets = spout_key_times['Spout_offset'].values
+        spout_onsets = spout_key_times['Spout_onset'].values
 
         new_latencies = np.zeros(len(info_key_times))
+        spout_offset_times_list = [None] * len(info_key_times)
+        spout_onset_times_list = [None] * len(info_key_times)
 
         for row_idx, row_slice in info_key_times.iterrows():
+            cur_onset = row_slice['Trial_onset']
+            cur_offset = row_slice['Trial_offset']
+            cur_spout_offsets = spout_offsets[(spout_offsets >= cur_onset) & (spout_offsets < cur_offset)]
+            cur_spout_onsets = spout_onsets[(spout_onsets >= cur_onset) & (spout_onsets < cur_offset)]
             if (row_slice['Hit'] == 1) | (row_slice['FA'] == 1):
-                cur_onset = row_slice['Trial_onset']
-                cur_offset = row_slice['Trial_offset']
-                cur_spout_offsets = spout_offsets[(spout_offsets >= cur_onset) & (spout_offsets < cur_offset)]
                 if len(cur_spout_offsets) == 0:  # Sometimes this is not registered properly in RZ6
                     print('Spout offset not registered properly in: ' + recording_path +
                           '\nTrialID: ' + str(row_slice['TrialID']) + '\n\n')
@@ -107,28 +111,35 @@ def recalculate_ePsych_responseLatency(input_list):
                     new_latencies[row_idx] = last_offset - cur_onset
             elif row_slice['Miss'] == 1:
                 # If miss trial:
-                # 1. Look for spout offsets during the trial. These trials can be handled separately since the animal
+                # 1. Look for spout offsets during the trial (above). These trials can be handled separately since the animal
                 #   might have detected the AM sound but failed to stay off spout for some reason
                 # 2. If no spout offsets during the trial were found, look for offsets during the shock period. If
                 #   none are found, return NaN
-                cur_onset = row_slice['Trial_onset']
-                cur_offset = row_slice['Trial_offset']
-
-                cur_spout_offsets = spout_offsets[(spout_offsets >= cur_onset) & (spout_offsets < cur_offset)]
-                if len(cur_spout_offsets) == 0:
+                if len(cur_spout_offsets) == 0:  # No spout offsets during trial, look for offsets during shock period
                     cur_spout_offsets = spout_offsets[(spout_offsets >= (cur_onset + shock_start_end[0])) &
                                                       (spout_offsets < (cur_onset + shock_start_end[1]))]
+                    cur_spout_onsets = spout_onsets[(spout_onsets >= (cur_onset + shock_start_end[0])) &
+                                                    (spout_onsets < (cur_onset + shock_start_end[1]))]
 
-                if len(cur_spout_offsets) == 0:  # Either animal did not withdraw with shock or this was a non-shocked miss
+                if len(cur_spout_offsets) == 0:  # Either animal did not withdraw with shock or this was a non-shocked miss without any spout withdrawals
                     new_latencies[row_idx] = np.nan
                 else:
                     last_offset = cur_spout_offsets[-1]  # Get the last offset
                     new_latencies[row_idx] = last_offset - cur_onset
-            else:
-                new_latencies[row_idx] = np.nan
+            else:  # CR trials: ther might be special cases where the animal quickly left the spout and came back; handle these trials with caution
+                if len(cur_spout_offsets) == 0:
+                    new_latencies[row_idx] = np.nan
+                else:
+                    last_offset = cur_spout_offsets[-1]  # Get the last offset
+                    new_latencies[row_idx] = last_offset - cur_onset
+
+            spout_offset_times_list[row_idx] = ';'.join(map(str, cur_spout_offsets))
+            spout_onset_times_list[row_idx] = ';'.join(map(str, cur_spout_onsets))
 
         # Replace dummy latencies
         info_key_times['RespLatency'] = new_latencies
+        info_key_times['SpoutOffset_times'] = spout_offset_times_list
+        info_key_times['SpoutOnset_times'] = spout_onset_times_list
 
         # Save new file
         info_key_times.to_csv(save_dir + sep + split(REGEX_SEP, recording_path)[-1], index=False)

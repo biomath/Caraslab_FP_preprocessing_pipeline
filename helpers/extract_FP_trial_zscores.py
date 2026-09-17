@@ -27,11 +27,19 @@ else:
     REGEX_SEP = sep
 
 
+def _spout_rate_in_window(event_times, win_start, win_end):
+    """Count spout events of `event_times` falling in [win_start, win_end) and convert to Hz."""
+    n_events = np.count_nonzero((event_times >= win_start) & (event_times < win_end))
+    return n_events / (win_end - win_start)
+
+
 def __get_trialID_dff_signal(processed_signal, key_times_df,
                              signal_start_for_zscore=-2.,
                              signal_end_for_zscore=4.,
                              baseline_start_for_zscore=0.,
                              baseline_end_for_zscore=1.,
+                             auc_start_for_zscore=0.,
+                             auc_end_for_zscore=1.,
                              response_latency_filter=False,
                              align_to_response=False,
                              use_nonAM_baseline=False,
@@ -40,10 +48,11 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
                              recording_fs=None):
     """Slice per-trial dF/F and baseline signal windows out of a continuous recording.
 
-    Iterates over every trial row in ``key_times_df``, skips reminder
-    trials, optionally filters by response latency, and computes the
-    trial-window and baseline-window signal (aligned either to trial onset
-    or to response time) for each remaining trial.
+    Iterates over every trial row in ``key_times_df``, optionally filters by
+    response latency, and computes the trial-window and baseline-window
+    signal (aligned either to trial onset or to response time) for each
+    remaining trial. Reminder trials are kept (not skipped) and flagged via
+    the ``Reminder`` field in the returned info tuple.
 
     Parameters
     ----------
@@ -68,6 +77,13 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
         End of the baseline window, in seconds relative to the alignment
         point (or to trial onset if ``use_nonAM_baseline`` is True).
         Default 1.0.
+    auc_start_for_zscore : float, optional
+        Start of the AUC/response window, in seconds relative to the
+        alignment point, used here to compute spout event rates over the
+        same window later used for AUC/peak measurement. Default 0.0.
+    auc_end_for_zscore : float, optional
+        End of the AUC/response window, in seconds relative to the
+        alignment point. Default 1.0.
     response_latency_filter : float or bool, optional
         Minimum response latency (seconds) required to keep a trial; trials
         below this are skipped. ``False``/``0`` disables filtering. Default False.
@@ -94,20 +110,29 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
     -------
     list
         One entry per retained trial:
-        ``[[trial_id, amdepth_dB, trial_onset, trial_offset, resp_latency], dff_signal, baseline_signal]``
+        ``[[trial_id, amdepth_dB, trial_onset, trial_offset, resp_latency,
+        reminder_flag, baseline_spoutOffset_Hz, response_spoutOffset_Hz,
+        baseline_spoutOnset_Hz, response_spoutOnset_Hz], dff_signal, baseline_signal]``
         where ``amdepth_dB`` is the AM depth converted to dB (or ``-40`` as
         a sentinel for zero/no AM depth), and ``dff_signal``/``baseline_signal``
-        are 1-D numpy arrays of the extracted trial/baseline windows.
+        are 1-D numpy arrays of the extracted trial/baseline windows. The
+        spout Hz fields are ``NaN`` when ``SpoutOffset_times``/``SpoutOnset_times``
+        columns are absent from ``key_times_df`` (e.g. 1IFC/Passive sessions,
+        or sessions not yet run through
+        :func:`helpers.recalculate_ePsych_responseLatency.recalculate_ePsych_responseLatency`).
     """
     ret_list = list()
     # There are inconsistencies between the Aversive and Appetitive paradigm in the column naming.
     # Make all lower case here
     key_times_df.columns = key_times_df.columns.str.lower()
-    for _, cur_trial in key_times_df.iterrows():
-        # remove reminders
-        if cur_trial[cur_trial.keys().str.contains('reminder')].iloc[0] == 1:
-            continue
 
+    # SpoutOffset_times/SpoutOnset_times only exist if recalculate_ePsych_responseLatency has been
+    # run on this session's trialInfo.csv (and that function skips passive sessions), so guard on
+    # column presence rather than assuming the columns are always there.
+    has_spout_offset_col = 'spoutoffset_times' in key_times_df.columns
+    has_spout_onset_col = 'spoutonset_times' in key_times_df.columns
+
+    for _, cur_trial in key_times_df.iterrows():
         # Use response time to get at the reward delivery
         if ms_latency_values:
             cur_trial.loc[cur_trial.keys().str.contains('resplatency')] /= 1000
@@ -156,7 +181,39 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
             (processed_signal['Time'] < _baseline_end)][
             sig_column].values
 
-# # Truncate signal at response
+        # AUC/response window, same alignment point as the signal window, used below to
+        # compute spout event rates over the same window later used for AUC/peak measurement
+        _auc_start = (cur_trial['trial_onset'] + auc_start_for_zscore + response_time)
+        _auc_end = (cur_trial['trial_onset'] + auc_end_for_zscore + response_time)
+
+        # Parse this trial's SpoutOffset_times/SpoutOnset_times (semicolon-joined strings written
+        # by helpers.recalculate_ePsych_responseLatency) into arrays. An empty window comes back
+        # from pandas as NaN (float), not an empty string, so that's guarded explicitly too.
+        if has_spout_offset_col:
+            raw_spout_offsets = cur_trial['spoutoffset_times']
+            if isinstance(raw_spout_offsets, str) and raw_spout_offsets:
+                cur_spout_offsets = np.array([float(t) for t in raw_spout_offsets.split(';')])
+            else:
+                cur_spout_offsets = np.array([])
+            baseline_spoutOffset_Hz = _spout_rate_in_window(cur_spout_offsets, _baseline_start, _baseline_end)
+            response_spoutOffset_Hz = _spout_rate_in_window(cur_spout_offsets, _auc_start, _auc_end)
+        else:
+            baseline_spoutOffset_Hz = np.nan
+            response_spoutOffset_Hz = np.nan
+
+        if has_spout_onset_col:
+            raw_spout_onsets = cur_trial['spoutonset_times']
+            if isinstance(raw_spout_onsets, str) and raw_spout_onsets:
+                cur_spout_onsets = np.array([float(t) for t in raw_spout_onsets.split(';')])
+            else:
+                cur_spout_onsets = np.array([])
+            baseline_spoutOnset_Hz = _spout_rate_in_window(cur_spout_onsets, _baseline_start, _baseline_end)
+            response_spoutOnset_Hz = _spout_rate_in_window(cur_spout_onsets, _auc_start, _auc_end)
+        else:
+            baseline_spoutOnset_Hz = np.nan
+            response_spoutOnset_Hz = np.nan
+
+        # # Truncate signal at response
         # if truncate_at_responseTime:
         #     response_time = cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0] / 1000
         #     signal_around_trial[signal_around_trial['Time'] >= (cur_trial['trial_onset'] + response_time)] = np.NaN
@@ -192,7 +249,12 @@ def __get_trialID_dff_signal(processed_signal, key_times_df,
                           cur_amdepth,
                           cur_trial['trial_onset'],
                           cur_trial['trial_offset'],
-                          cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0]],
+                          cur_trial[cur_trial.keys().str.contains('resplatency')].iloc[0],
+                          cur_trial[cur_trial.keys().str.contains('reminder')].iloc[0],
+                          baseline_spoutOffset_Hz,
+                          response_spoutOffset_Hz,
+                          baseline_spoutOnset_Hz,
+                          response_spoutOnset_Hz],
                          dff_signal, baseline_signal])
     return ret_list
 
@@ -417,38 +479,36 @@ def run_zscore_extraction(input_list):
                     cur_key_times = info_key_times[(info_key_times['TrialType'] == 0)]
                     # Keep track of trial number and onset time too
             elif paradigm_type == 'AversiveAM':
+                # Reminder trials are intentionally kept here (not filtered out) so they fall
+                # into whichever bucket their own Hit/Miss/FA/ShockFlag values put them in; a
+                # 'Reminder' flag is carried through per-trial in __get_trialID_dff_signal so
+                # they can still be identified/filtered downstream.
                 if trial_type == 'Hit (all)':
                     cur_key_times = info_key_times[
-                        (info_key_times['TrialType'] == 0) & (info_key_times['Hit'] == 1) & (
-                                info_key_times['Reminder'] == 0)]
+                        (info_key_times['TrialType'] == 0) & (info_key_times['Hit'] == 1)]
 
                 elif trial_type == 'Hit (shock)':
                     cur_key_times = info_key_times[
-                        (info_key_times['TrialType'] == 0) & (info_key_times['Hit'] == 1) & (
-                                info_key_times['Reminder'] == 0) &
+                        (info_key_times['TrialType'] == 0) & (info_key_times['Hit'] == 1) &
                         (info_key_times['ShockFlag'] == 1)]
 
                 elif trial_type == 'Hit (no shock)':
                     cur_key_times = info_key_times[
-                        (info_key_times['TrialType'] == 0) & (info_key_times['Hit'] == 1) & (
-                                info_key_times['Reminder'] == 0) &
+                        (info_key_times['TrialType'] == 0) & (info_key_times['Hit'] == 1) &
                         (info_key_times['ShockFlag'] == 0)]
 
                 elif trial_type == 'Miss (shock)':
                     cur_key_times = info_key_times[
-                        (info_key_times['TrialType'] == 0) & (info_key_times['Miss'] == 1) & (
-                                info_key_times['Reminder'] == 0) &
+                        (info_key_times['TrialType'] == 0) & (info_key_times['Miss'] == 1) &
                         (info_key_times['ShockFlag'] == 1)]
 
                 elif trial_type == 'Miss (no shock)':
                     cur_key_times = info_key_times[
-                        (info_key_times['TrialType'] == 0) & (info_key_times['Miss'] == 1) & (
-                                info_key_times['Reminder'] == 0) &
+                        (info_key_times['TrialType'] == 0) & (info_key_times['Miss'] == 1) &
                         (info_key_times['ShockFlag'] == 0)]
 
                 elif trial_type == 'False alarm':
-                    cur_key_times = info_key_times[
-                        (info_key_times['FA'] == 1) & (info_key_times['Reminder'] == 0)]
+                    cur_key_times = info_key_times[(info_key_times['FA'] == 1)]
 
                 else:  # Passive
                     cur_key_times = info_key_times[(info_key_times['TrialType'] == 0)]
@@ -465,6 +525,8 @@ def run_zscore_extraction(input_list):
                                                    signal_end_for_zscore=signal_start_end[1],
                                                    baseline_start_for_zscore=baseline_start_end[0],
                                                    baseline_end_for_zscore=baseline_start_end[1],
+                                                   auc_start_for_zscore=auc_start_end[0],
+                                                   auc_end_for_zscore=auc_start_end[1],
                                                    response_latency_filter=response_latency_filter,
                                                    align_to_response=cur_trial_align_to_response,
                                                    use_nonAM_baseline=use_nonAM_baseline,
